@@ -27,6 +27,9 @@ from .vector_store import (
     vector_search,
 )
 
+from .user_doc_retriever import format_user_doc_context, get_user_doc_context
+from .user_doc_service import process_user_pdf
+
 __all__ = [
     "extract_pdf",
     "extract_pdf_as_text",
@@ -49,4 +52,8 @@ __all__ = [
     "HYBRID_KEYWORD_TOP_K",
     "HYBRID_FINAL_TOP_K",
     "HYBRID_RRF_K",
+    "process_user_pdf",
+    "get_user_doc_context",
+    "format_user_doc_context",
 ]
+

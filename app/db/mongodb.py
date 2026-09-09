@@ -22,6 +22,27 @@ def get_vector_collection():
     return db_instance.client[db_name]["vector_documents"]
 
 
+def get_user_doc_collection():
+    """Return Motor async collection for user-uploaded documents (user_documents)."""
+    db_name = getattr(settings, "DB_NAME", None) or "Chatbot"
+    return db_instance.client[db_name]["user_documents"]
+
+
+async def ensure_user_doc_indexes() -> None:
+    """
+    Create compound and sorting indexes on user_documents collection.
+    Ensures strict per-user isolation and fast filtering by user_id and doc_id.
+    """
+    try:
+        coll = get_user_doc_collection()
+        if coll is not None:
+            await coll.create_index([("user_id", 1), ("doc_id", 1)])
+            await coll.create_index([("user_id", 1), ("created_at", -1)])
+            logger.info("[MongoDB] user_documents compound indexes created/verified.")
+    except Exception as exc:
+        logger.warning(f"[MongoDB] Could not ensure user_documents indexes: {exc}")
+
+
 async def connect_to_mongo():
     mongo_url = getattr(settings, "MONGODB_URL", None) or getattr(settings, "MONGODB_URI", None)
     if not mongo_url:
@@ -35,6 +56,9 @@ async def connect_to_mongo():
         # THE PING TEST (Crucial for Cloud)
         await db_instance.client.admin.command("ping")
         logger.info("✅ MongoDB Connected Successfully!")
+
+        # Ensure user document indexes
+        await ensure_user_doc_indexes()
     except Exception as e:
         logger.error(f"❌ MongoDB Connection Failed: {e}")
         raise e

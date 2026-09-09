@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from app.routes import llm, github_auth
+from app.routes import llm, github_auth, documents
 from app.db.mongodb import connect_to_mongo, close_mongo_connection
 
 
@@ -99,3 +99,4 @@ def health_check():
 # API routes
 app.include_router(llm.router)
 app.include_router(github_auth.router)
+app.include_router(documents.router)

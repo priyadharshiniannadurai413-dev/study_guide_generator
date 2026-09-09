@@ -82,6 +82,21 @@ async def save_token(
     )
 
 
+async def save_user_token(
+    user_id: str,
+    token: str,
+    github_login: str = "",
+    scopes: str = "repo,read:user",
+) -> None:
+    """Convenience alias for saving user's GitHub token."""
+    await save_token(
+        clerk_user_id=user_id,
+        access_token=token,
+        github_login=github_login,
+        scopes=scopes,
+    )
+
+
 async def get_decrypted_token(clerk_user_id: str) -> str | None:
     """Return the plaintext access token for a user, or None if not connected."""
     doc = await get_token_collection().find_one({"clerk_user_id": clerk_user_id})

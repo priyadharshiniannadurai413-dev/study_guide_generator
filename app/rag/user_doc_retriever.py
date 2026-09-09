@@ -60,12 +60,24 @@ async def _atlas_vector_search(
                 "text": 1,
                 "page_number": 1,
                 "chunk_id": 1,
+                "user_id": 1,
+                "doc_id": 1,
                 "score": {"$meta": "vectorSearchScore"},
             }
         },
     ]
     cursor = collection.aggregate(pipeline)
-    return await cursor.to_list(length=top_k)
+    raw_results = await cursor.to_list(length=top_k)
+    return [
+        {
+            "text": r.get("text", ""),
+            "page_number": r.get("page_number", 1),
+            "chunk_id": r.get("chunk_id", ""),
+            "score": r.get("score", 0.0),
+        }
+        for r in raw_results
+        if r.get("user_id") == user_id and r.get("doc_id") == doc_id
+    ]
 
 
 async def _in_memory_similarity_search(

@@ -52,7 +52,7 @@ def _extract_and_chunk_pdf(file_bytes: bytes, doc_id: str, filename: str, user_i
                 "chunk_id": f"{doc_id}_1",
             }]
 
-    now = datetime.now(timezone.utc)
+    now = datetime.utcnow()
     records: List[Dict[str, Any]] = []
 
     for i, chunk in enumerate(raw_chunks, start=1):

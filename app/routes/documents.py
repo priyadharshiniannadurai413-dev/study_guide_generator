@@ -42,13 +42,18 @@ async def upload_document(
     # 1. Validate file format
     filename = file.filename or "uploaded_document.pdf"
     content_type = file.content_type or ""
-    if not filename.lower().endswith(".pdf") and content_type != "application/pdf":
+    if content_type and content_type != "application/pdf":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid file type. Only application/pdf is supported.",
+        )
+    if not filename.lower().endswith(".pdf"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Only PDF documents (.pdf) are supported.",
         )
 
-    # 2. Read and validate file size
+    # 2. Read and validate file size and PDF header
     file_bytes = await file.read()
     if not file_bytes:
         raise HTTPException(
@@ -60,6 +65,12 @@ async def upload_document(
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail=f"File exceeds maximum allowed size of 25MB (size: {len(file_bytes) / (1024 * 1024):.1f}MB).",
+        )
+
+    if not file_bytes.startswith(b"%PDF"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid file: Not a valid PDF document.",
         )
 
     # 3. Ingest PDF and compute embeddings
@@ -89,7 +100,8 @@ async def upload_document(
         )
 
 
-@router.get("/")
+@router.get("", response_model=List[Dict[str, Any]])
+@router.get("/", include_in_schema=False)
 async def list_user_documents(
     current_user: dict = Depends(get_current_user),
 ) -> List[Dict[str, Any]]:

@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: Optional[str] = None
     MISTRAL_API_KEY: Optional[str] = None
     TAVILY_API_KEY: Optional[str] = None
+    GROQ_API_KEY: Optional[str] = None
 
     # MongoDB Configuration
     MONGODB_URL: Optional[str] = None

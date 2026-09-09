@@ -5,8 +5,9 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
-from app.routes import llm, github_auth, documents
+from app.routes import documents, github_auth, llm, study, voice
 from app.db.mongodb import connect_to_mongo, close_mongo_connection
 
 
@@ -76,6 +77,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Ensure outputs directory exists and mount static files
+outputs_dir = os.path.abspath("outputs")
+os.makedirs(outputs_dir, exist_ok=True)
+app.mount("/outputs", StaticFiles(directory=outputs_dir), name="outputs")
+
 
 @app.get("/")
 def landing_page():
@@ -97,6 +103,8 @@ def health_check():
 
 
 # API routes
-app.include_router(llm.router)
 app.include_router(github_auth.router)
 app.include_router(documents.router)
+app.include_router(study.router)
+app.include_router(voice.router)
+app.include_router(llm.router)

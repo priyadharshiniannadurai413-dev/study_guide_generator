@@ -21,3 +21,6 @@ python-multipart>=0.0.9
 litellm==1.82.6
 langchain-mistralai
 langchain-mcp-adapters
+edge-tts>=7.0.0
+groq>=0.10.0
+reportlab>=4.0.0

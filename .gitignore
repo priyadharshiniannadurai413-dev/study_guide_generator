@@ -1,0 +1,47 @@
+.env
+.env.*
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+*.egg
+*.egg-info/
+dist/
+build/
+
+# Virtual Environments
+venv/
+.venv/
+env/
+.env/
+
+# Databases & Vector stores (future)
+*.sqlite3
+*.db
+chroma_db/
+
+# Uploads & Logs
+uploads/
+outputs/
+*.log
+logs/
+
+# Pytest / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Frontend (if added in future phases)
+node_modules/
+.next/

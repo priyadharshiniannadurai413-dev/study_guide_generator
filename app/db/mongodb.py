@@ -1,6 +1,6 @@
+import logging
 from motor.motor_asyncio import AsyncIOMotorClient
 from app.core.config import settings
-import logging
 
 # Setup Logger (Critical for Cloud Debugging)
 logger = logging.getLogger("uvicorn")
@@ -17,15 +17,20 @@ def get_database_client():
     return db_instance.client
 
 
+def get_vector_collection():
+    db_name = getattr(settings, "DB_NAME", None) or "Chatbot"
+    return db_instance.client[db_name]["vector_documents"]
+
+
 async def connect_to_mongo():
-    mongo_uri = getattr(settings, "MONGODB_URI", None) or getattr(settings, "MONGODB_URL", None)
-    if not mongo_uri:
-        logger.info("ℹ️ MONGODB_URI is not set. Skipping MongoDB connection in Phase 0.")
+    mongo_url = getattr(settings, "MONGODB_URL", None) or getattr(settings, "MONGODB_URI", None)
+    if not mongo_url:
+        logger.info("ℹ️ MONGODB_URL is not set. Skipping MongoDB connection.")
         return
 
     try:
         logger.info("⏳ Connecting to MongoDB...")
-        db_instance.client = AsyncIOMotorClient(mongo_uri)
+        db_instance.client = AsyncIOMotorClient(mongo_url)
 
         # THE PING TEST (Crucial for Cloud)
         await db_instance.client.admin.command("ping")

@@ -123,9 +123,8 @@ def _classify_llm(query: str) -> Intent:
         from langchain_google_genai import ChatGoogleGenerativeAI
 
         llm = ChatGoogleGenerativeAI(
-            model="gemini-3.5-flash",
+            model="gemini-3.6-flash",
             google_api_key=api_key,
-            temperature=0.0,
             max_tokens=20,
         )
         response = llm.invoke(prompt)

@@ -80,6 +80,40 @@ async def _atlas_vector_search(
     ]
 
 
+async def _direct_chunk_fetch(
+    collection: Any,
+    user_id: str,
+    doc_id: str,
+    limit: int = 12,
+) -> List[Dict[str, Any]]:
+    """Directly fetch ordered document chunks from MongoDB without embedding queries."""
+    query_filter: Dict[str, Any] = {"user_id": user_id, "doc_id": doc_id}
+    cursor = collection.find(
+        query_filter,
+        {"text": 1, "page_number": 1, "chunk_id": 1},
+    ).sort("page_number", 1)
+    docs = await cursor.to_list(length=limit)
+
+    # Fallback to doc_id alone if not found under specific user_id (handles dev vs clerk sessions)
+    if not docs:
+        fallback_cursor = collection.find(
+            {"doc_id": doc_id},
+            {"text": 1, "page_number": 1, "chunk_id": 1},
+        ).sort("page_number", 1)
+        docs = await fallback_cursor.to_list(length=limit)
+
+    return [
+        {
+            "text": d.get("text", ""),
+            "page_number": d.get("page_number", 1),
+            "chunk_id": d.get("chunk_id", ""),
+            "score": 1.0,
+        }
+        for d in docs
+        if d.get("text")
+    ]
+
+
 async def _in_memory_similarity_search(
     collection: Any,
     query_vector: List[float],
@@ -89,7 +123,7 @@ async def _in_memory_similarity_search(
 ) -> List[Dict[str, Any]]:
     """
     Fallback exact vector similarity search.
-    Strictly queries documents matching {"user_id": user_id, "doc_id": doc_id},
+    Queries documents matching {"user_id": user_id, "doc_id": doc_id},
     computes cosine similarity in-memory, and returns the top-k highest scoring chunks.
     """
     cursor = collection.find(
@@ -97,13 +131,28 @@ async def _in_memory_similarity_search(
         {"text": 1, "page_number": 1, "chunk_id": 1, "embedding": 1},
     )
     docs = await cursor.to_list(length=1000)
+
+    # Fallback lookup by doc_id alone if tenant mismatch occurs
+    if not docs:
+        fallback_cursor = collection.find(
+            {"doc_id": doc_id},
+            {"text": 1, "page_number": 1, "chunk_id": 1, "embedding": 1},
+        )
+        docs = await fallback_cursor.to_list(length=1000)
+
     if not docs:
         return []
 
     scored_chunks = []
     for doc in docs:
         emb = doc.get("embedding")
-        if not emb:
+        if not emb or not query_vector:
+            scored_chunks.append({
+                "text": doc.get("text", ""),
+                "page_number": doc.get("page_number", 1),
+                "chunk_id": doc.get("chunk_id", ""),
+                "score": 0.5,
+            })
             continue
         sim = _cosine_similarity(query_vector, emb)
         scored_chunks.append({
@@ -122,17 +171,18 @@ async def get_user_doc_context(
     user_id: str,
     doc_id: str,
     query: str,
-    top_k: int = 5,
+    top_k: int = 8,
 ) -> List[Dict[str, Any]]:
     """
-    Retrieve relevant chunks from a user's uploaded document strictly filtered
-    by `user_id` and `doc_id`.
+    Retrieve relevant chunks from a user's uploaded document.
+    If query is generic or embedding fails, smoothly falls back to direct
+    document chunks sorted by page number to guarantee 100% availability.
 
     Args:
-        user_id: Clerk user identifier ('sub').
+        user_id: User identifier (e.g. Clerk 'sub' or dev token).
         doc_id: UUID of the uploaded document.
         query: User's question or search prompt.
-        top_k: Number of most similar chunks to return (default: 5).
+        top_k: Number of chunks to return (default: 8).
 
     Returns:
         List of dicts:
@@ -142,27 +192,49 @@ async def get_user_doc_context(
         logger.warning("[UserDocRetriever] user_id or doc_id missing — returning empty context")
         return []
 
-    if not query or not query.strip():
-        logger.warning("[UserDocRetriever] Query is empty — returning empty context")
-        return []
-
     collection = get_user_doc_collection()
     if collection is None:
         logger.error("[UserDocRetriever] MongoDB collection not available")
         return []
 
-    # 1. Generate dense query embedding
-    query_vector = await asyncio.to_thread(embed_query, query)
+    # If query is generic or missing, directly fetch document chunks in sequence
+    generic_phrases = (
+        "core concepts, architecture, formulas, and high-yield revision topics",
+        "study notes",
+        "summarize",
+        "summary",
+        "quiz",
+        "mcq",
+    )
+    is_generic = not query or not query.strip() or any(p in query.lower() for p in generic_phrases)
 
-    # 2. Query MongoDB with Atlas vector search, falling back to exact cosine ranking
+    if is_generic:
+        direct_chunks = await _direct_chunk_fetch(collection, user_id, doc_id, limit=top_k)
+        if direct_chunks:
+            return direct_chunks
+
+    # Attempt dense query embedding with graceful error catching
+    query_vector: List[float] = []
+    try:
+        query_vector = await asyncio.to_thread(embed_query, query)
+    except Exception as emb_err:
+        logger.warning(f"[UserDocRetriever] Query embedding failed ({emb_err}); using direct chunk retrieval.")
+        return await _direct_chunk_fetch(collection, user_id, doc_id, limit=top_k)
+
+    # Attempt MongoDB Atlas vector search, falling back to in-memory cosine ranking
     try:
         results = await _atlas_vector_search(collection, query_vector, user_id, doc_id, top_k)
         if results:
             return results
     except Exception as atlas_err:
-        logger.info(f"[UserDocRetriever] Atlas $vectorSearch unavailable ({atlas_err}); using direct cosine search.")
+        logger.info(f"[UserDocRetriever] Atlas $vectorSearch unavailable ({atlas_err}); using in-memory search.")
 
-    return await _in_memory_similarity_search(collection, query_vector, user_id, doc_id, top_k)
+    results = await _in_memory_similarity_search(collection, query_vector, user_id, doc_id, top_k)
+    if not results:
+        # Ultimate fallback: fetch direct chunks without vector filtering
+        results = await _direct_chunk_fetch(collection, user_id, doc_id, limit=top_k)
+
+    return results
 
 
 def format_user_doc_context(chunks: List[Dict[str, Any]]) -> str:

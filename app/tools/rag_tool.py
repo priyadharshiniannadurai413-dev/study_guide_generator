@@ -76,7 +76,7 @@ def _run_sync(query: str) -> str:
 
 
 @tool
-def syllabus_rag_search(query: str) -> str:
+async def syllabus_rag_search(query: str) -> str:
     """
     Search the college syllabus database for course content, subjects,
     unit topics, credit distributions, course objectives, and outcomes.
@@ -94,7 +94,7 @@ def syllabus_rag_search(query: str) -> str:
     Returns:
         Structured markdown context of retrieved syllabus chunks with page and type citations.
     """
-    return _run_sync(query)
+    return await _execute_rag_search(query)
 
 
 @tool

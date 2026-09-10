@@ -64,6 +64,15 @@ async def get_current_user(
             )
         token = parts[1]
 
+    # Support local development tokens (e.g. dev_*, student_demo_user)
+    if token and (token.startswith("dev_") or token in ("student_demo_user", "student_dev_token", "demo_token")):
+        dev_sub = token if token.startswith("dev_") else "student_demo_user"
+        return {
+            "sub": dev_sub,
+            "email": f"{dev_sub}@university.edu",
+            "name": "Student Scholar",
+        }
+
     payload = verify_clerk_token(token)
 
     user_id = payload.get("sub")

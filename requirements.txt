@@ -1,26 +1,38 @@
-fastapi>=0.110.0
-uvicorn[standard]>=0.28.0
-pydantic>=2.6.0
-pydantic-settings>=2.2.0
-python-dotenv>=1.0.0
-httpx>=0.27.0
-motor>=3.3.0
-cryptography>=42.0.0
-python-jose[cryptography]>=3.3.0
-requests>=2.31.0
-langchain-core>=0.3.0
-pypdf>=4.0.0
-pdfplumber>=0.10.0
-langchain-mongodb>=0.2.0
-langchain-google-genai>=2.0.0
-langchain-text-splitters>=0.3.0
-langchain>=1.0.0
-langchain-community>=0.3.0
-langchain-tavily>=0.1.0
-python-multipart>=0.0.9
-litellm==1.82.6
+# Web Framework & Server
+fastapi
+uvicorn
+python-multipart
+
+# Configuration & Environment
+pydantic
+pydantic-settings
+python-dotenv
+
+# Database
+motor
+pymongo
+
+# Authentication, Cryptography & Networking
+cryptography
+python-jose
+requests
+httpx
+
+# AI, LLM & LangChain
+langchain
+langchain-core
+langchain-community
+langchain-mongodb
+langchain-google-genai
 langchain-mistralai
-langchain-mcp-adapters
-edge-tts>=7.0.0
-groq>=0.10.0
-reportlab>=4.0.0
+langchain-text-splitters
+langchain-tavily
+groq
+
+# Document Processing & PDF Export
+pypdf
+pdfplumber
+reportlab
+
+# Voice & Speech
+edge-tts

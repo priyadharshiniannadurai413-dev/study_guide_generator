@@ -62,8 +62,8 @@ class ChatService:
     """
 
     def __init__(self):
-        self.primary_model_name = "mistral/mistral-small-latest"
-        self.fallback_model_name = "gemini-3.5-flash"
+        self.primary_model_name = "mistral/open-mistral-7b"
+        self.fallback_model_name = "gemini-flash-lite-latest"
 
     def _get_primary_llm(self, tools: Optional[List[BaseTool]] = None) -> Any:
         """Instantiate Mistral Small model with optional tool bindings."""

@@ -1,0 +1,42 @@
+# Web Framework & Server
+fastapi
+uvicorn
+python-multipart
+
+# Configuration & Environment
+pydantic
+pydantic-settings
+python-dotenv
+
+# Database
+motor
+pymongo
+
+# Authentication, Cryptography & Networking
+cryptography
+python-jose
+requests
+httpx
+
+# AI, LLM & LangChain (Native Providers)
+langchain
+langchain-core
+langchain-community
+langchain-mongodb
+langchain-google-genai
+langchain-mistralai
+langchain-groq
+langchain-text-splitters
+langchain-tavily
+
+# LangGraph (Multi-Agent Orchestration)
+langgraph
+
+# Document Processing & PDF/DOCX Export
+pypdf
+pdfplumber
+reportlab>=4.0.0
+python-docx>=1.1.0
+
+# Voice & Speech
+edge-tts

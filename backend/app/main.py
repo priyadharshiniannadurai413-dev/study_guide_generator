@@ -7,7 +7,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.routes import documents, github_auth, llm, study, voice
+from app.routes import documents, github_auth, integrations, llm, study, voice
 from app.db.mongodb import connect_to_mongo, close_mongo_connection
 
 
@@ -102,10 +102,17 @@ def health_check():
     }
 
 
+from app.routes.integrations import router as integrations_router
+from app.routes.tools import router as tools_router
+from app.routes.web_research import router as web_research_router
 from app.study_guide.router import router as study_guide_router
 
 # API routes
 app.include_router(github_auth.router)
+app.include_router(github_auth.router, prefix="/api")
+app.include_router(integrations_router)
+app.include_router(tools_router)
+app.include_router(web_research_router)
 app.include_router(documents.router)
 app.include_router(study.router)
 app.include_router(study_guide_router)

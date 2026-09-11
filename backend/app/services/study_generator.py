@@ -26,6 +26,64 @@ CANDIDATE_STUDY_MODELS = [
     "gemini-3.6-flash",
 ]
 
+DifficultyLevel = Literal["beginner", "intermediate", "advanced"]
+
+
+def get_difficulty_notes_prompt(difficulty: DifficultyLevel) -> str:
+    """Generate prompt instructions calibrating depth, vocabulary, and concepts for study notes."""
+    if difficulty == "beginner":
+        return (
+            "CALIBRATION LEVEL - BEGINNER:\n"
+            "- Depth: Foundational and conceptual introduction.\n"
+            "- Vocabulary: Accessible, clear, avoiding unexplained jargon or dense mathematical proofs.\n"
+            "- Explanation style: Intuitive analogies, step-by-step breakdowns, and practical everyday analogies.\n"
+            "- Focus: Defining what the concept is, why it matters, basic declarations/syntax, and core purpose."
+        )
+    elif difficulty == "advanced":
+        return (
+            "CALIBRATION LEVEL - ADVANCED:\n"
+            "- Depth: Deep theoretical rigor, low-level internal mechanics, architectural analysis, and mathematical formalisms.\n"
+            "- Vocabulary: High-density domain terminology, formal academic and systems engineering lexicon.\n"
+            "- Explanation style: Thorough exploration of subtle edge cases, concurrency/memory constraints, non-obvious failure modes, and performance trade-offs.\n"
+            "- Focus: Multi-step derivations, internal implementation details, and architectural critique."
+        )
+    else:  # intermediate (default)
+        return (
+            "CALIBRATION LEVEL - INTERMEDIATE:\n"
+            "- Depth: Balanced operational mechanics and standard university undergraduate curriculum depth.\n"
+            "- Vocabulary: Standard professional and engineering terminology with clear technical definitions.\n"
+            "- Explanation style: Real-world engineering patterns, standard algorithmic workflows, and practical code/diagram structures.\n"
+            "- Focus: How components operate, interact, and practical trade-offs encountered in real-world application."
+        )
+
+
+def get_difficulty_mcq_prompt(difficulty: DifficultyLevel) -> str:
+    """Generate prompt instructions calibrating depth, vocabulary, and distractor plausibility for MCQs."""
+    if difficulty == "beginner":
+        return (
+            "CALIBRATION LEVEL - BEGINNER:\n"
+            "- Question Depth: Foundational recall, basic definitions, primary components, and direct identification.\n"
+            "- Vocabulary: Clear, simple, and direct language without ambiguous phrasing.\n"
+            "- Distractors: Distinct and clearly incorrect to someone who knows the basics, avoiding tricky fine-grained distinctions.\n"
+            "- Explanations: Clear, educational, step-by-step explanations reinforcing foundational concepts."
+        )
+    elif difficulty == "advanced":
+        return (
+            "CALIBRATION LEVEL - ADVANCED:\n"
+            "- Question Depth: Multi-step reasoning, complex scenario analysis, subtle edge cases, architectural trade-offs, and failure mode diagnosis.\n"
+            "- Vocabulary: Rigorous academic and professional engineering terminology.\n"
+            "- Distractors: Highly plausible, sophisticated distractors representing deep, non-trivial misconceptions and subtle technical traps.\n"
+            "- Explanations: In-depth technical justifications dissecting why the correct option is optimal and why each specific distractor fails."
+        )
+    else:  # intermediate (default)
+        return (
+            "CALIBRATION LEVEL - INTERMEDIATE:\n"
+            "- Question Depth: Application-oriented reasoning, code tracing, operational behavior, and architectural comparison.\n"
+            "- Vocabulary: Standard technical and university-level engineering terminology.\n"
+            "- Distractors: Plausible options reflecting common student misunderstandings, implementation pitfalls, or typical bugs.\n"
+            "- Explanations: Comprehensive conceptual explanations detailing operational principles and mechanics."
+        )
+
 
 # ==============================================================================
 # Pydantic Schemas
@@ -110,6 +168,10 @@ class TopicStudyNotes(BaseModel):
     key_takeaways: List[str] = Field(description="Bulleted high-yield facts and revision points")
     concepts: List[ConceptBlock] = Field(description="Detailed conceptual breakdown of sub-concepts")
     common_pitfalls: List[str] = Field(description="Common mistakes, edge cases, and exam traps")
+    external_references: Optional[List[Dict[str, str]]] = Field(
+        default=None,
+        description="External documentation or web references fetched via Fetch MCP",
+    )
 
     def to_study_notes(self) -> "StudyNotes":
         """Convert to legacy StudyNotes schema."""
@@ -480,7 +542,11 @@ def _generate_with_mistral_topic_study_notes(topic: str, context_text: str) -> O
         return None
 
 
-def _generate_with_groq_adaptive_study_notes(topic: str, context_text: str) -> Optional[AdaptiveStudyNotes]:
+def _generate_with_groq_adaptive_study_notes(
+    topic: str,
+    context_text: str,
+    difficulty: DifficultyLevel = "intermediate",
+) -> Optional[AdaptiveStudyNotes]:
     """Failover generator for AdaptiveStudyNotes using Groq's high-speed JSON inference."""
     api_key = getattr(settings, "GROQ_API_KEY", None)
     if not api_key:
@@ -490,9 +556,11 @@ def _generate_with_groq_adaptive_study_notes(topic: str, context_text: str) -> O
         from groq import Groq
 
         client = Groq(api_key=api_key)
+        diff_instruction = get_difficulty_notes_prompt(difficulty)
         prompt = (
             f"{ADAPTIVE_STUDY_NOTES_SYSTEM_PROMPT}\n\n"
-            f"Generate adaptive study notes for '{topic}'. Respond ONLY with a valid JSON object matching this schema:\n"
+            f"{diff_instruction}\n\n"
+            f"Generate adaptive study notes for '{topic}' at '{difficulty}' difficulty level. Respond ONLY with a valid JSON object matching this schema:\n"
             "{\n"
             f'  "title": "{topic}",\n'
             '  "executive_summary": "2-3 dense paragraphs synthesizing the core concepts, modules, and architecture",\n'
@@ -526,7 +594,11 @@ def _generate_with_groq_adaptive_study_notes(topic: str, context_text: str) -> O
         return None
 
 
-def _generate_with_mistral_adaptive_study_notes(topic: str, context_text: str) -> Optional[AdaptiveStudyNotes]:
+def _generate_with_mistral_adaptive_study_notes(
+    topic: str,
+    context_text: str,
+    difficulty: DifficultyLevel = "intermediate",
+) -> Optional[AdaptiveStudyNotes]:
     """Failover generator for AdaptiveStudyNotes using Mistral structured output."""
     api_key = getattr(settings, "MISTRAL_API_KEY", None)
     if not api_key:
@@ -536,7 +608,8 @@ def _generate_with_mistral_adaptive_study_notes(topic: str, context_text: str) -
 
         llm = ChatMistralAI(model="mistral-small-latest", api_key=api_key, temperature=0.2)
         structured_llm = llm.with_structured_output(AdaptiveStudyNotes)
-        system_prompt = ADAPTIVE_STUDY_NOTES_SYSTEM_PROMPT
+        diff_instruction = get_difficulty_notes_prompt(difficulty)
+        system_prompt = f"{ADAPTIVE_STUDY_NOTES_SYSTEM_PROMPT}\n\n{diff_instruction}"
         human_prompt = ADAPTIVE_STUDY_NOTES_USER_PROMPT.format(topic=topic, context_text=context_text.strip()[:14000])
 
         result = structured_llm.invoke([
@@ -552,7 +625,10 @@ def _generate_with_mistral_adaptive_study_notes(topic: str, context_text: str) -
         return None
 
 
-def _generate_with_groq_study_notes(context_text: str) -> Optional[StudyNotes]:
+def _generate_with_groq_study_notes(
+    context_text: str,
+    difficulty: DifficultyLevel = "intermediate",
+) -> Optional[StudyNotes]:
     """Failover generator using Groq's high-speed JSON inference."""
     api_key = getattr(settings, "GROQ_API_KEY", None)
     if not api_key:
@@ -562,9 +638,11 @@ def _generate_with_groq_study_notes(context_text: str) -> Optional[StudyNotes]:
         from groq import Groq
 
         client = Groq(api_key=api_key)
+        diff_instruction = get_difficulty_notes_prompt(difficulty)
         prompt = (
             f"{STUDY_NOTES_SYSTEM_PROMPT}\n\n"
-            "Respond ONLY with a valid JSON object matching this schema:\n"
+            f"{diff_instruction}\n\n"
+            f"Respond ONLY with a valid JSON object matching this schema calibrated to '{difficulty}' difficulty:\n"
             "{\n"
             '  "topic_title": "Specific technical topic or domain covered",\n'
             '  "executive_summary": "2-3 dense academic paragraphs explaining core principles, engineering mechanics, and applications",\n'
@@ -598,7 +676,11 @@ def _generate_with_groq_study_notes(context_text: str) -> Optional[StudyNotes]:
         return None
 
 
-def _generate_with_groq_quiz(context_text: str, num_questions: int = 5) -> Optional[QuizDeck]:
+def _generate_with_groq_quiz(
+    context_text: str,
+    num_questions: int = 20,
+    difficulty: DifficultyLevel = "intermediate",
+) -> Optional[QuizDeck]:
     """Failover generator for MCQs using Groq's high-speed JSON inference."""
     api_key = getattr(settings, "GROQ_API_KEY", None)
     if not api_key:
@@ -608,9 +690,11 @@ def _generate_with_groq_quiz(context_text: str, num_questions: int = 5) -> Optio
         from groq import Groq
 
         client = Groq(api_key=api_key)
+        diff_instruction = get_difficulty_mcq_prompt(difficulty)
         prompt = (
             f"You are an expert university examiner. Generate exactly {num_questions} rigorous multiple-choice questions "
-            "strictly grounded in the provided academic material. "
+            f"strictly grounded in the provided academic material calibrated to '{difficulty}' difficulty.\n\n"
+            f"{diff_instruction}\n\n"
             "Respond ONLY with a valid JSON object matching this schema:\n"
             "{\n"
             '  "title": "Academic Subject Quiz",\n'
@@ -650,6 +734,7 @@ def _generate_with_groq_quiz(context_text: str, num_questions: int = 5) -> Optio
 def generate_study_notes(
     context_text: str,
     model_name: str = DEFAULT_STUDY_GEN_MODEL,
+    difficulty: DifficultyLevel = "intermediate",
 ) -> StudyNotes:
     """
     Generate structured, high-yield study notes from syllabus or lecture context.
@@ -663,13 +748,14 @@ def generate_study_notes(
     models_to_try = [model_name] + [m for m in CANDIDATE_STUDY_MODELS if m != model_name]
     last_error = None
 
+    diff_instruction = get_difficulty_notes_prompt(difficulty)
+    system_prompt = f"{STUDY_NOTES_SYSTEM_PROMPT}\n\n{diff_instruction}"
+    human_prompt = STUDY_NOTES_USER_PROMPT.format(context_text=context_text.strip())
+
     for model in models_to_try:
         try:
             llm = _get_llm(model_name=model)
             structured_llm = llm.with_structured_output(StudyNotes)
-
-            system_prompt = STUDY_NOTES_SYSTEM_PROMPT
-            human_prompt = STUDY_NOTES_USER_PROMPT.format(context_text=context_text.strip())
 
             result = structured_llm.invoke([
                 SystemMessage(content=system_prompt),
@@ -687,7 +773,7 @@ def generate_study_notes(
 
     # Attempt ultra-fast secondary provider failover (Groq)
     logger.info("[generate_study_notes] Gemini candidates exhausted; invoking Groq failover engine...")
-    groq_result = _generate_with_groq_study_notes(context_text)
+    groq_result = _generate_with_groq_study_notes(context_text, difficulty=difficulty)
     if groq_result:
         return groq_result
 
@@ -698,9 +784,10 @@ def generate_study_notes(
 async def generate_study_notes_async(
     context_text: str,
     model_name: str = DEFAULT_STUDY_GEN_MODEL,
+    difficulty: DifficultyLevel = "intermediate",
 ) -> StudyNotes:
     """Asynchronous non-blocking wrapper around generate_study_notes."""
-    return await asyncio.to_thread(generate_study_notes, context_text, model_name)
+    return await asyncio.to_thread(generate_study_notes, context_text, model_name, difficulty)
 
 
 def generate_adaptive_study_notes(
@@ -708,6 +795,7 @@ def generate_adaptive_study_notes(
     context_text: Optional[str] = None,
     model_name: str = DEFAULT_STUDY_GEN_MODEL,
     context: Optional[str] = None,
+    difficulty: DifficultyLevel = "intermediate",
 ) -> AdaptiveStudyNotes:
     """
     Generate document-adaptive study notes eliminating rigid syntax/formula and fake exam assumptions.
@@ -725,17 +813,18 @@ def generate_adaptive_study_notes(
     models_to_try = [model_name] + [m for m in CANDIDATE_STUDY_MODELS if m != model_name]
     last_error = None
 
+    diff_instruction = get_difficulty_notes_prompt(difficulty)
+    system_prompt = f"{ADAPTIVE_STUDY_NOTES_SYSTEM_PROMPT}\n\n{diff_instruction}"
+    human_prompt = ADAPTIVE_STUDY_NOTES_USER_PROMPT.format(
+        topic=topic.strip(),
+        context_text=raw_context.strip()[:14000],
+    )
+
     # 1. Primary: Google Gemini candidates
     for model in models_to_try:
         try:
             llm = _get_llm(model_name=model)
             structured_llm = llm.with_structured_output(AdaptiveStudyNotes)
-
-            system_prompt = ADAPTIVE_STUDY_NOTES_SYSTEM_PROMPT
-            human_prompt = ADAPTIVE_STUDY_NOTES_USER_PROMPT.format(
-                topic=topic.strip(),
-                context_text=raw_context.strip()[:14000],
-            )
 
             result = structured_llm.invoke([
                 SystemMessage(content=system_prompt),
@@ -753,13 +842,13 @@ def generate_adaptive_study_notes(
 
     # 2. Secondary: Mistral AI failover
     logger.info("[generate_adaptive_study_notes] Gemini candidates exhausted; trying Mistral failover...")
-    mistral_result = _generate_with_mistral_adaptive_study_notes(topic, raw_context)
+    mistral_result = _generate_with_mistral_adaptive_study_notes(topic, raw_context, difficulty=difficulty)
     if mistral_result:
         return mistral_result
 
     # 3. Tertiary: Groq failover
     logger.info("[generate_adaptive_study_notes] Mistral exhausted; trying Groq failover...")
-    groq_result = _generate_with_groq_adaptive_study_notes(topic, raw_context)
+    groq_result = _generate_with_groq_adaptive_study_notes(topic, raw_context, difficulty=difficulty)
     if groq_result:
         return groq_result
 
@@ -772,39 +861,44 @@ async def generate_adaptive_study_notes_async(
     context_text: Optional[str] = None,
     model_name: str = DEFAULT_STUDY_GEN_MODEL,
     context: Optional[str] = None,
+    difficulty: DifficultyLevel = "intermediate",
 ) -> AdaptiveStudyNotes:
     """Asynchronous non-blocking wrapper around generate_adaptive_study_notes."""
-    return await asyncio.to_thread(generate_adaptive_study_notes, topic, context_text, model_name, context)
+    return await asyncio.to_thread(generate_adaptive_study_notes, topic, context_text, model_name, context, difficulty)
 
 
 def generate_topic_study_notes(
     topic: str,
     context_text: str,
     model_name: str = DEFAULT_STUDY_GEN_MODEL,
+    difficulty: DifficultyLevel = "intermediate",
 ) -> AdaptiveStudyNotes:
     """
     Generate structured study notes for a specific academic topic.
     Delegates to the dynamic AdaptiveStudyNotes engine.
     """
-    return generate_adaptive_study_notes(topic, context_text, model_name)
+    return generate_adaptive_study_notes(topic, context_text, model_name, difficulty=difficulty)
 
 
 async def generate_topic_study_notes_async(
     topic: str,
     context_text: str,
     model_name: str = DEFAULT_STUDY_GEN_MODEL,
+    difficulty: DifficultyLevel = "intermediate",
 ) -> AdaptiveStudyNotes:
     """Asynchronous non-blocking wrapper around generate_topic_study_notes."""
-    return await generate_adaptive_study_notes_async(topic, context_text, model_name)
+    return await generate_adaptive_study_notes_async(topic, context_text, model_name, difficulty=difficulty)
 
 
 def generate_mcq_quiz(
     context_text: str,
-    num_questions: int = 5,
+    num_questions: int = 20,
     model_name: str = DEFAULT_STUDY_GEN_MODEL,
+    difficulty: DifficultyLevel = "intermediate",
 ) -> QuizDeck:
     """
     Generate an academic multiple-choice quiz from syllabus or course context.
+    Calibrated strictly by difficulty ('beginner', 'intermediate', 'advanced').
 
     Uses Google Gemini with structured output enforcing the `QuizDeck` schema.
     Automatically cascades through candidate models and Groq if rate limits occur.
@@ -818,26 +912,28 @@ def generate_mcq_quiz(
     models_to_try = [model_name] + [m for m in CANDIDATE_STUDY_MODELS if m != model_name]
     last_error = None
 
+    diff_instruction = get_difficulty_mcq_prompt(difficulty)
+    system_prompt = (
+        "You are an expert university examiner. Your task is to generate rigorous, "
+        "academically calibrated multiple-choice questions (MCQs) strictly grounded in the provided syllabus context.\n"
+        f"{diff_instruction}\n"
+        f"Generate exactly {num_questions} questions.\n"
+        "Requirements:\n"
+        "- Each question must have exactly 4 distinct answer choices in 'options'.\n"
+        "- 'correct_index' must be an integer between 0 and 3 indicating the zero-based index of the right option.\n"
+        "- 'explanation' must clearly justify why that specific option is correct based on the calibrated difficulty.\n"
+        "- If a specific syllabus page number is explicitly referenced in the context, set 'reference_page' accordingly; otherwise null."
+    )
+
+    human_prompt = (
+        f"Generate a quiz deck with exactly {num_questions} questions at '{difficulty}' difficulty level based on the following material:\n\n"
+        f"--- CONTEXT START ---\n{context_text.strip()}\n--- CONTEXT END ---"
+    )
+
     for model in models_to_try:
         try:
             llm = _get_llm(model_name=model)
             structured_llm = llm.with_structured_output(QuizDeck)
-
-            system_prompt = (
-                "You are an expert university examiner. Your task is to generate rigorous, "
-                "academically challenging multiple-choice questions (MCQs) strictly grounded in the provided syllabus context.\n"
-                f"Generate exactly {num_questions} questions.\n"
-                "Requirements:\n"
-                "- Each question must have exactly 4 distinct answer choices in 'options'.\n"
-                "- 'correct_index' must be an integer between 0 and 3 indicating the zero-based index of the right option.\n"
-                "- 'explanation' must clearly justify why that specific option is correct.\n"
-                "- If a specific syllabus page number is explicitly referenced in the context, set 'reference_page' accordingly; otherwise null."
-            )
-
-            human_prompt = (
-                f"Generate a quiz deck with {num_questions} questions based on the following material:\n\n"
-                f"--- CONTEXT START ---\n{context_text.strip()}\n--- CONTEXT END ---"
-            )
 
             result = structured_llm.invoke([
                 SystemMessage(content=system_prompt),
@@ -855,7 +951,7 @@ def generate_mcq_quiz(
 
     # Attempt ultra-fast secondary provider failover (Groq)
     logger.info("[generate_mcq_quiz] Gemini candidates exhausted; invoking Groq failover engine...")
-    groq_result = _generate_with_groq_quiz(context_text, num_questions=num_questions)
+    groq_result = _generate_with_groq_quiz(context_text, num_questions=num_questions, difficulty=difficulty)
     if groq_result:
         return groq_result
 
@@ -865,11 +961,12 @@ def generate_mcq_quiz(
 
 async def generate_mcq_quiz_async(
     context_text: str,
-    num_questions: int = 5,
+    num_questions: int = 20,
     model_name: str = DEFAULT_STUDY_GEN_MODEL,
+    difficulty: DifficultyLevel = "intermediate",
 ) -> QuizDeck:
     """Asynchronous non-blocking wrapper around generate_mcq_quiz."""
-    return await asyncio.to_thread(generate_mcq_quiz, context_text, num_questions, model_name)
+    return await asyncio.to_thread(generate_mcq_quiz, context_text, num_questions, model_name, difficulty)
 
 
 COMPLETE_PACK_SYSTEM_PROMPT = """You are a premier university professor and curriculum director.

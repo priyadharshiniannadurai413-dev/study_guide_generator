@@ -40,6 +40,16 @@ class SupervisorState(TypedDict):
     study_notes: Optional[Dict[str, Any]]
     quiz_deck: Optional[Dict[str, Any]]
     num_questions: int
+    # ── Fetch MCP & Evidence Enrichment ───────────────────────────────
+    rag_context: Optional[str]
+    rag_sources: Optional[List[Dict[str, Any]]]
+    web_context: Optional[str]
+    web_sources: Optional[List[Dict[str, Any]]]
+    combined_context: Optional[str]
+    enable_web: Optional[bool]
+    web_target_url: Optional[str]
+    web_fetch_error: Optional[str]
+    web_sufficiency_score: Optional[float]
 
 
 __all__ = ["SupervisorState"]

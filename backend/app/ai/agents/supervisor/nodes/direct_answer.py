@@ -28,6 +28,25 @@ async def direct_answer_node(state: SupervisorState) -> dict:
     """
     user_query = state.get("user_query", "")
 
+    # If the user query contains a web URL, ground the answer strictly on the webpage via Fetch MCP
+    from app.ai.context_evaluator import extract_url_from_text
+    found_url = extract_url_from_text(user_query)
+    if found_url:
+        try:
+            from app.ai.web_content_service import get_web_content_service
+            web_service = get_web_content_service()
+            web_result = await web_service.answer_question_from_web(url=found_url, question=user_query)
+            if web_result.get("success"):
+                answer = web_result.get("answer", "")
+                source_meta = web_result.get("source", {})
+                source_str = f"\n\n**Source**: [{source_meta.get('title', 'Web Document')}]({source_meta.get('url', found_url)})"
+                return {
+                    "final_response": f"{answer}{source_str}",
+                    "web_sources": [source_meta],
+                }
+        except Exception as web_exc:
+            logger.warning(f"[DirectAnswer] Web answer extraction notice: {web_exc}; falling back to general LLM")
+
     llm = get_llm_with_fallback()
 
     try:

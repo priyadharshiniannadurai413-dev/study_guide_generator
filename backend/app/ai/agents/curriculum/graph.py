@@ -1,32 +1,58 @@
 """
 app/ai/agents/curriculum/graph.py
 -----------------------------------
-LangGraph subgraph for the Curriculum agent.
-Flow: retrieve_context → generate_answer
+LangGraph subgraph for the Curriculum agent with Fetch MCP enrichment.
+
+Flow:
+    START → retrieve_context → evaluate_context
+              │
+              ├── [route: "generate"] ──→ generate_answer ──→ END
+              │
+              └── [route: "fetch_web"] ─→ fetch_web → validate_web → generate_answer ──→ END
 """
 
 from langgraph.graph import StateGraph, START, END
 
 from app.ai.state import SupervisorState
 from app.ai.agents.curriculum.nodes import retrieve_context, generate_answer
+from app.ai.context_evaluator import (
+    evaluate_context_node,
+    route_after_evaluation,
+    fetch_web_node,
+    validate_web_node,
+)
 
 
 def build_curriculum_graph() -> StateGraph:
-    """
-    Build and return the compiled Curriculum agent subgraph.
-
-    Graph:
-        __start__ → retrieve_context → generate_answer → __end__
-    """
+    """Build and return the compiled Curriculum agent subgraph with Fetch MCP."""
     graph = StateGraph(SupervisorState)
 
-    # Add nodes
+    # Nodes
     graph.add_node("retrieve_context", retrieve_context)
+    graph.add_node("evaluate_context", evaluate_context_node)
+    graph.add_node("fetch_web", fetch_web_node)
+    graph.add_node("validate_web", validate_web_node)
     graph.add_node("generate_answer", generate_answer)
 
-    # Define edges
+    # Edges
     graph.add_edge(START, "retrieve_context")
-    graph.add_edge("retrieve_context", "generate_answer")
+    graph.add_edge("retrieve_context", "evaluate_context")
+
+    # Conditional routing
+    graph.add_conditional_edges(
+        "evaluate_context",
+        route_after_evaluation,
+        {
+            "generate": "generate_answer",
+            "fetch_web": "fetch_web",
+        },
+    )
+
+    # Web enrichment
+    graph.add_edge("fetch_web", "validate_web")
+    graph.add_edge("validate_web", "generate_answer")
+
+    # Exit
     graph.add_edge("generate_answer", END)
 
     return graph.compile()

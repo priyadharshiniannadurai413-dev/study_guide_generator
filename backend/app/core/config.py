@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     GITHUB_OAUTH_CLIENT_ID: Optional[str] = None
     GITHUB_OAUTH_CLIENT_SECRET: Optional[str] = None
     GITHUB_OAUTH_REDIRECT_URI: Optional[str] = None
+    GITHUB_REDIRECT_URI: Optional[str] = None  # Alias for GITHUB_OAUTH_REDIRECT_URI
 
     # Token Encryption Key for stored OAuth credentials
     TOKEN_ENCRYPTION_KEY: Optional[str] = None
@@ -63,8 +64,10 @@ class Settings(BaseSettings):
         if not self.MONGODB_URL and self.MONGODB_URI:
             self.MONGODB_URL = self.MONGODB_URI
 
-        # Derive GITHUB_OAUTH_REDIRECT_URI from FRONTEND_URL if not explicitly specified
-        if not self.GITHUB_OAUTH_REDIRECT_URI and self.FRONTEND_URL:
+        # Resolve GITHUB_OAUTH_REDIRECT_URI from GITHUB_REDIRECT_URI or FRONTEND_URL
+        if not self.GITHUB_OAUTH_REDIRECT_URI and self.GITHUB_REDIRECT_URI:
+            self.GITHUB_OAUTH_REDIRECT_URI = self.GITHUB_REDIRECT_URI
+        elif not self.GITHUB_OAUTH_REDIRECT_URI and self.FRONTEND_URL:
             frontend_clean = self.FRONTEND_URL.strip().rstrip("/")
             if frontend_clean:
                 self.GITHUB_OAUTH_REDIRECT_URI = f"{frontend_clean}/github/callback"

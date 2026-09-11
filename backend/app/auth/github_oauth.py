@@ -79,13 +79,14 @@ class TokenExchangeResult(str):
         return iter((str(self), self.scopes))
 
 
-def generate_github_auth_url(user_id: str) -> str:
+def generate_github_auth_url(user_id: str, redirect_uri: Optional[str] = None) -> str:
     """
     Generate the GitHub OAuth redirect URL with a secure signed state parameter
     encoding the user's ID to prevent CSRF attacks.
 
     Args:
         user_id: Clerk user identifier ('sub').
+        redirect_uri: Optional custom redirect URI (defaults to settings.GITHUB_OAUTH_REDIRECT_URI).
 
     Returns:
         Full GitHub authorization URL string.
@@ -99,14 +100,16 @@ def generate_github_auth_url(user_id: str) -> str:
         _signing_key(),
         algorithm="HS256",
     )
-    params = urlencode(
-        {
-            "client_id": settings.GITHUB_OAUTH_CLIENT_ID,
-            "redirect_uri": settings.GITHUB_OAUTH_REDIRECT_URI,
-            "scope": _GITHUB_SCOPES,
-            "state": state,
-        }
-    )
+    target_redirect = redirect_uri or settings.GITHUB_OAUTH_REDIRECT_URI
+    params_dict = {
+        "client_id": settings.GITHUB_OAUTH_CLIENT_ID,
+        "scope": _GITHUB_SCOPES,
+        "state": state,
+    }
+    if target_redirect:
+        params_dict["redirect_uri"] = target_redirect
+
+    params = urlencode(params_dict)
     return f"{_GITHUB_AUTHORIZE_URL}?{params}"
 
 
@@ -145,13 +148,18 @@ def verify_state(state: str) -> str:
         )
 
 
-def exchange_code_for_token(code: str, state: Optional[str] = None) -> TokenExchangeResult:
+def exchange_code_for_token(
+    code: str,
+    state: Optional[str] = None,
+    redirect_uri: Optional[str] = None,
+) -> TokenExchangeResult:
     """
     Exchange the GitHub OAuth authorization code for an access token.
 
     Args:
         code: Authorization code from GitHub redirect.
         state: Optional state token to verify before exchange.
+        redirect_uri: Optional redirect URI matching the authorize request.
 
     Returns:
         TokenExchangeResult: Access token string, also unpackable as (token, scopes).
@@ -164,15 +172,19 @@ def exchange_code_for_token(code: str, state: Optional[str] = None) -> TokenExch
     if state:
         verify_state(state)
 
+    target_redirect = redirect_uri or settings.GITHUB_OAUTH_REDIRECT_URI
+    payload_data = {
+        "client_id": settings.GITHUB_OAUTH_CLIENT_ID,
+        "client_secret": settings.GITHUB_OAUTH_CLIENT_SECRET,
+        "code": code,
+    }
+    if target_redirect:
+        payload_data["redirect_uri"] = target_redirect
+
     try:
         resp = requests.post(
             _GITHUB_TOKEN_URL,
-            json={
-                "client_id": settings.GITHUB_OAUTH_CLIENT_ID,
-                "client_secret": settings.GITHUB_OAUTH_CLIENT_SECRET,
-                "code": code,
-                "redirect_uri": settings.GITHUB_OAUTH_REDIRECT_URI,
-            },
+            json=payload_data,
             headers={"Accept": "application/json"},
             timeout=15,
         )

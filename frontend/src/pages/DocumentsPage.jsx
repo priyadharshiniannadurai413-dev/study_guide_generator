@@ -23,6 +23,12 @@ export function DocumentsPage({ setActiveTab, onSelectDocForStudy }) {
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadPhase, setUploadPhase] = useState('idle'); // 'idle' | 'uploading' | 'indexing' | 'complete' | 'error'
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadFileName, setUploadFileName] = useState('');
+  const [uploadFileSize, setUploadFileSize] = useState('');
+  const [uploadStatusText, setUploadStatusText] = useState('');
+  const indexingIntervalRef = useRef(null);
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef(null);
   const { addToast } = useToast();
@@ -41,6 +47,11 @@ export function DocumentsPage({ setActiveTab, onSelectDocForStudy }) {
 
   useEffect(() => {
     loadDocuments();
+    return () => {
+      if (indexingIntervalRef.current) {
+        clearInterval(indexingIntervalRef.current);
+      }
+    };
   }, []);
 
   const handleFileUpload = async (file) => {
@@ -56,16 +67,97 @@ export function DocumentsPage({ setActiveTab, onSelectDocForStudy }) {
       return;
     }
 
+    if (indexingIntervalRef.current) {
+      clearInterval(indexingIntervalRef.current);
+      indexingIntervalRef.current = null;
+    }
+
+    // 1. Upload start log & initial state
+    console.log('[DocumentUpload] Upload started:', file.name, `(${file.size} bytes)`);
+    setUploading(true);
+    setUploadPhase('uploading');
+    setUploadProgress(0);
+    setUploadFileName(file.name);
+    setUploadFileSize((file.size / (1024 * 1024)).toFixed(2) + ' MB');
+    setUploadStatusText('Transmitting document bytes to server...');
+
     try {
-      setUploading(true);
-      const res = await endpoints.uploadDocument(file);
-      addToast(`Indexed "${res.filename}" with ${res.total_chunks} chunks!`, 'success');
-      await loadDocuments();
+      const res = await endpoints.uploadDocument(file, (progressEvent) => {
+        if (progressEvent.phase === 'uploading') {
+          // 2. Upload progress ticks: map 0-100% byte progress to 0-45% of the overall pipeline
+          const mapped = Math.min(45, Math.round((progressEvent.percent / 100) * 45));
+          setUploadProgress(mapped);
+          setUploadStatusText(`Uploading bytes (${progressEvent.percent}%)...`);
+          console.log('[DocumentUpload] Upload progress tick:', `${progressEvent.percent}% (mapped to ${mapped}%)`);
+        } else if (progressEvent.phase === 'indexing') {
+          // 3. Upload complete & 4. Indexing call start
+          console.log('[DocumentUpload] Upload complete');
+          console.log('[DocumentUpload] Indexing call start: extracting text chunks, calculating vector embeddings, indexing into MongoDB Atlas...');
+          setUploadPhase('indexing');
+          setUploadProgress((prev) => Math.max(prev, 50));
+          setUploadStatusText('Extracting text chunks from PDF...');
+
+          // Smooth simulated progress (50% -> 95%) with dynamic stage messages while awaiting backend response
+          if (!indexingIntervalRef.current) {
+            indexingIntervalRef.current = setInterval(() => {
+              setUploadProgress((prev) => {
+                if (prev < 68) {
+                  setUploadStatusText('Chunking text & parsing semantic units...');
+                  return prev + 3;
+                } else if (prev < 84) {
+                  setUploadStatusText('Generating dense vector embeddings in MongoDB Atlas...');
+                  return prev + 2;
+                } else if (prev < 95) {
+                  setUploadStatusText('Finalizing vector search index & metadata...');
+                  return prev + 1;
+                }
+                return prev;
+              });
+            }, 350);
+          }
+        }
+      });
+
+      // Clear simulated indexing interval
+      if (indexingIntervalRef.current) {
+        clearInterval(indexingIntervalRef.current);
+        indexingIntervalRef.current = null;
+      }
+
+      // 5. Indexing resolve & 6. Final state update: snap to 100%
+      console.log('[DocumentUpload] Indexing resolved:', res);
+      console.log('[DocumentUpload] Final state update: 100% complete');
+
+      setUploadPhase('complete');
+      setUploadProgress(100);
+      setUploadStatusText(`Indexed "${res.filename || file.name}" with ${res.total_chunks || 0} chunks!`);
+      addToast(`Indexed "${res.filename || file.name}" with ${res.total_chunks || 0} chunks!`, 'success');
+
+      // Refresh list
+      loadDocuments();
+
+      // Keep 100% visible for 2.5 seconds so user clearly sees full completion
+      setTimeout(() => {
+        setUploadPhase('idle');
+        setUploading(false);
+        setUploadProgress(0);
+        setUploadFileName('');
+      }, 2500);
+
     } catch (err) {
+      if (indexingIntervalRef.current) {
+        clearInterval(indexingIntervalRef.current);
+        indexingIntervalRef.current = null;
+      }
+      console.log('[DocumentUpload] Indexing rejected:', err);
       console.error('Upload failed:', err);
+      setUploadPhase('error');
+      setUploadStatusText(`Upload failed: ${err.message}`);
       addToast(`Upload failed: ${err.message}`, 'error');
-    } finally {
-      setUploading(false);
+
+      setTimeout(() => {
+        setUploading(false);
+      }, 3500);
     }
   };
 
@@ -178,10 +270,16 @@ export function DocumentsPage({ setActiveTab, onSelectDocForStudy }) {
         </div>
 
         <h3 style={{ marginBottom: '8px' }}>
-          {uploading ? 'Processing & Indexing Document Chunks...' : 'Upload Academic PDF'}
+          {uploading
+            ? uploadPhase === 'indexing'
+              ? 'Extracting Chunks & Vector Indexing...'
+              : 'Uploading Academic PDF...'
+            : 'Upload Academic PDF'}
         </h3>
         <p style={{ fontSize: '0.92rem', color: 'var(--text-muted)', marginBottom: '16px' }}>
-          Drag and drop your lecture slides or syllabus PDF here, or click to browse (Max 25MB)
+          {uploading
+            ? uploadStatusText
+            : 'Drag and drop your lecture slides or syllabus PDF here, or click to browse (Max 25MB)'}
         </p>
 
         <button
@@ -193,9 +291,176 @@ export function DocumentsPage({ setActiveTab, onSelectDocForStudy }) {
             fileInputRef.current?.click();
           }}
         >
-          {uploading ? 'Embedding Chunks...' : 'Choose PDF File'}
+          {uploading
+            ? uploadPhase === 'indexing'
+              ? 'Vector Indexing...'
+              : 'Uploading...'
+            : 'Choose PDF File'}
         </button>
       </div>
+
+      {/* Active Upload & Indexing Progress Card */}
+      {uploadPhase !== 'idle' && (
+        <div
+          className="glass-card"
+          style={{
+            marginTop: '-18px',
+            marginBottom: '36px',
+            padding: '20px 24px',
+            border: `1px solid ${
+              uploadPhase === 'complete'
+                ? 'rgba(16, 185, 129, 0.4)'
+                : uploadPhase === 'error'
+                ? 'rgba(239, 68, 68, 0.4)'
+                : 'rgba(99, 102, 241, 0.4)'
+            }`,
+            borderRadius: 'var(--radius-lg)',
+            backgroundColor: 'rgba(15, 23, 42, 0.85)',
+            boxShadow:
+              uploadPhase === 'complete'
+                ? '0 0 20px rgba(16, 185, 129, 0.15)'
+                : '0 0 20px rgba(99, 102, 241, 0.15)',
+            textAlign: 'left',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: '12px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div
+                style={{
+                  width: '36px',
+                  height: '36px',
+                  borderRadius: 'var(--radius-sm)',
+                  background:
+                    uploadPhase === 'complete'
+                      ? 'rgba(16, 185, 129, 0.2)'
+                      : uploadPhase === 'error'
+                      ? 'rgba(239, 68, 68, 0.2)'
+                      : 'rgba(99, 102, 241, 0.2)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color:
+                    uploadPhase === 'complete'
+                      ? 'var(--success)'
+                      : uploadPhase === 'error'
+                      ? 'var(--error)'
+                      : 'var(--primary)',
+                }}
+              >
+                {uploadPhase === 'complete' ? (
+                  <CheckCircle2 size={20} />
+                ) : uploadPhase === 'error' ? (
+                  <AlertCircle size={20} />
+                ) : (
+                  <FileText size={20} />
+                )}
+              </div>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>
+                  {uploadFileName || 'Document.pdf'}
+                </div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                  {uploadFileSize && <span>{uploadFileSize} • </span>}
+                  <span
+                    style={{
+                      color:
+                        uploadPhase === 'complete'
+                          ? 'var(--success)'
+                          : uploadPhase === 'error'
+                          ? 'var(--error)'
+                          : 'var(--cyan)',
+                    }}
+                  >
+                    {uploadPhase === 'uploading' && 'Phase 1/2: Uploading bytes'}
+                    {uploadPhase === 'indexing' && 'Phase 2/2: Vector search indexing'}
+                    {uploadPhase === 'complete' && 'Pipeline complete'}
+                    {uploadPhase === 'error' && 'Error'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ textAlign: 'right' }}>
+              <span
+                style={{
+                  fontSize: '1.2rem',
+                  fontWeight: 700,
+                  color:
+                    uploadPhase === 'complete'
+                      ? 'var(--success)'
+                      : uploadPhase === 'error'
+                      ? 'var(--error)'
+                      : 'var(--primary)',
+                }}
+              >
+                {Math.round(uploadProgress)}%
+              </span>
+            </div>
+          </div>
+
+          {/* Progress Track */}
+          <div
+            style={{
+              width: '100%',
+              height: '10px',
+              backgroundColor: 'rgba(255, 255, 255, 0.08)',
+              borderRadius: '999px',
+              overflow: 'hidden',
+              position: 'relative',
+              marginBottom: '10px',
+            }}
+          >
+            <div
+              style={{
+                height: '100%',
+                width: `${uploadProgress}%`,
+                transition: 'width 0.3s ease-in-out',
+                borderRadius: '999px',
+                background:
+                  uploadPhase === 'complete'
+                    ? 'linear-gradient(90deg, #10b981 0%, #059669 100%)'
+                    : uploadPhase === 'error'
+                    ? 'linear-gradient(90deg, #ef4444 0%, #dc2626 100%)'
+                    : uploadPhase === 'indexing'
+                    ? 'linear-gradient(90deg, #6366f1 0%, #06b6d4 50%, #8b5cf6 100%)'
+                    : 'linear-gradient(90deg, #6366f1 0%, #8b5cf6 100%)',
+                boxShadow:
+                  uploadPhase === 'complete'
+                    ? '0 0 12px rgba(16, 185, 129, 0.6)'
+                    : '0 0 12px rgba(99, 102, 241, 0.6)',
+              }}
+            />
+          </div>
+
+          {/* Status Footer */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              fontSize: '0.82rem',
+              color: 'var(--text-muted)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              {(uploadPhase === 'uploading' || uploadPhase === 'indexing') && (
+                <Loader2 size={13} style={{ animation: 'spin 1.2s linear infinite' }} />
+              )}
+              <span>{uploadStatusText}</span>
+            </div>
+            {uploadPhase === 'complete' && (
+              <span style={{ color: 'var(--success)', fontWeight: 600 }}>Ready for RAG</span>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Document Library Table / List */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px' }}>

@@ -22,6 +22,7 @@ from app.ai.agents.supervisor.nodes import (
     router_node,
     direct_answer_node,
     finalize_response,
+    github_agent_node,
 )
 from app.ai.agents.curriculum.graph import build_curriculum_graph
 from app.ai.agents.studynotes.graph import build_studynotes_graph
@@ -36,7 +37,7 @@ def _route_decision(state: SupervisorState) -> str:
     and returns the target node name for the graph to execute.
     """
     route = state.get("route", "direct_answer")
-    if route not in {"curriculum", "study_notes", "mcq", "direct_answer"}:
+    if route not in {"curriculum", "study_notes", "mcq", "direct_answer", "github"}:
         logger.warning(f"[Supervisor] Unknown route '{route}' — defaulting to direct_answer.")
         return "direct_answer"
     return route
@@ -55,6 +56,7 @@ def build_supervisor_graph():
     graph.add_node("router_node", router_node)
     graph.add_node("direct_answer", direct_answer_node)
     graph.add_node("finalize_response", finalize_response)
+    graph.add_node("github", github_agent_node)
 
     # Register subgraph agents as nodes
     graph.add_node("curriculum", build_curriculum_graph())
@@ -74,6 +76,7 @@ def build_supervisor_graph():
             "study_notes": "study_notes",
             "mcq": "mcq",
             "direct_answer": "direct_answer",
+            "github": "github",
         },
     )
 
@@ -82,6 +85,7 @@ def build_supervisor_graph():
     graph.add_edge("study_notes", "finalize_response")
     graph.add_edge("mcq", "finalize_response")
     graph.add_edge("direct_answer", "finalize_response")
+    graph.add_edge("github", "finalize_response")
     graph.add_edge("finalize_response", END)
 
     compiled = graph.compile()

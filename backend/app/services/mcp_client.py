@@ -135,7 +135,20 @@ async def get_github_mcp_tools(clerk_user_id: str) -> List[BaseTool]:
         logger.info(f"[MCPClient] No connected GitHub token found for user {clerk_user_id}")
         return []
 
-    # 3. Connect via langchain_mcp_adapters with timeout safety
+    from app.db.token_store import get_github_login
+    github_login = await get_github_login(clerk_user_id) or ""
+
+    # Instant resolution for standard PAT and OAuth tokens to eliminate SSE timeout latency
+    if token.startswith(("ghp_", "gho_", "ghu_", "github_pat_")) or "token" in token.lower():
+        from app.tools.github_tools import create_user_github_tools
+        native_tools = create_user_github_tools(token, default_owner=github_login)
+        logger.info(
+            f"[MCPClient] Instantly activated {len(native_tools)} native GitHub tools for user {clerk_user_id} (@{github_login})"
+        )
+        _tool_cache.set(clerk_user_id, native_tools)
+        return native_tools
+
+    # 3. Connect via langchain_mcp_adapters with timeout safety (for OAuth tokens)
     try:
         from langchain_mcp_adapters.sessions import SSEConnection
         from langchain_mcp_adapters.tools import load_mcp_tools
@@ -174,29 +187,41 @@ async def get_github_mcp_tools(clerk_user_id: str) -> List[BaseTool]:
         if not filtered_tools and raw_tools:
             filtered_tools = raw_tools[:32]
 
-        logger.info(
-            f"[MCPClient] Loaded {len(filtered_tools)} GitHub MCP tools for user {clerk_user_id}"
-        )
-        _tool_cache.set(clerk_user_id, filtered_tools)
-        return filtered_tools
+        if filtered_tools:
+            logger.info(
+                f"[MCPClient] Loaded {len(filtered_tools)} GitHub MCP tools for user {clerk_user_id}"
+            )
+            _tool_cache.set(clerk_user_id, filtered_tools)
+            return filtered_tools
+
+        # If MCP server returned 0 tools, fallback to native GitHub tools
+        from app.tools.github_tools import create_user_github_tools
+        native_tools = create_user_github_tools(token, default_owner=github_login)
+        logger.info(f"[MCPClient] Fallback to {len(native_tools)} native GitHub tools for user {clerk_user_id}")
+        _tool_cache.set(clerk_user_id, native_tools)
+        return native_tools
 
     except asyncio.TimeoutError:
         logger.warning(
-            f"[MCPClient] GitHub MCP connection timed out after {MCP_TIMEOUT_SECONDS}s for user {clerk_user_id}"
+            f"[MCPClient] GitHub MCP connection timed out after {MCP_TIMEOUT_SECONDS}s for user {clerk_user_id}; falling back to native GitHub tools."
         )
-        return []
+        from app.tools.github_tools import create_user_github_tools
+        native_tools = create_user_github_tools(token, default_owner=github_login)
+        _tool_cache.set(clerk_user_id, native_tools)
+        return native_tools
     except Exception as exc:
         err_msg = str(exc)
-        if "401" in err_msg or "403" in err_msg or "unauthorized" in err_msg.lower():
-            logger.warning(
-                f"[MCPClient] GitHub OAuth token revoked/expired for user {clerk_user_id}: {exc}"
-            )
-            _tool_cache.invalidate(clerk_user_id)
-        else:
-            logger.warning(
-                f"[MCPClient] Failed to load GitHub MCP tools for user {clerk_user_id}: {exc}"
-            )
-        return []
+        logger.info(
+            f"[MCPClient] Copilot MCP unavailable ({exc}) for user {clerk_user_id}; activating native GitHub tools."
+        )
+        try:
+            from app.tools.github_tools import create_user_github_tools
+            native_tools = create_user_github_tools(token, default_owner=github_login)
+            _tool_cache.set(clerk_user_id, native_tools)
+            return native_tools
+        except Exception as fallback_exc:
+            logger.error(f"[MCPClient] Native GitHub tools fallback failed: {fallback_exc}")
+            return []
 
 
 __all__ = [

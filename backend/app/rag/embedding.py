@@ -43,21 +43,29 @@ def get_embedder(
 def _embed_batch_with_retry(
     embedder: GoogleGenerativeAIEmbeddings,
     batch: List[str],
-    max_retries: int = 3,
+    max_retries: int = 6,
 ) -> List[List[float]]:
-    """Embed a small batch with retry on rate limits (429)."""
+    """Embed a small batch with retry on rate limits (429) using Google retryDelay."""
+    import re
+
     for attempt in range(1, max_retries + 1):
         try:
             return embedder.embed_documents(batch)
         except Exception as exc:
             err_str = str(exc).lower()
             if "429" in err_str or "resource_exhausted" in err_str or "quota" in err_str:
-                sleep_secs = 20 * attempt
+                match = re.search(r"retry in ([\d\.]+)s", str(exc), re.IGNORECASE)
+                if not match:
+                    match = re.search(r"retrydelay['\":\s]+([\d\.]+)s", str(exc), re.IGNORECASE)
+                if match:
+                    sleep_secs = max(int(float(match.group(1))) + 2, 20)
+                else:
+                    sleep_secs = 25 * attempt
                 logger.warning(
                     f"[Embedding] Rate limit hit (attempt {attempt}/{max_retries}). "
                     f"Waiting {sleep_secs}s before retry..."
                 )
-                print(f"   [WARN] Rate limit hit. Waiting {sleep_secs}s before retry...")
+                print(f"   [WARN] Rate limit hit (attempt {attempt}/{max_retries}). Waiting {sleep_secs}s before retry...")
                 time.sleep(sleep_secs)
             else:
                 raise exc

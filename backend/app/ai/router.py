@@ -13,8 +13,6 @@ import re
 from enum import Enum
 from typing import Optional
 
-from app.core.config import settings
-
 logger = logging.getLogger("uvicorn")
 
 
@@ -101,11 +99,6 @@ def _classify_regex(query: str) -> Optional[Intent]:
 
 def _classify_llm(query: str) -> Intent:
     """Layer 2 lightweight LLM classifier for queries that pass through regex."""
-    api_key = getattr(settings, "GEMINI_API_KEY", None)
-    if not api_key:
-        logger.info("[Router] GEMINI_API_KEY missing for LLM classification; defaulting to UNKNOWN.")
-        return Intent.UNKNOWN
-
     prompt = (
         "You are an intent classifier for a university academic assistant. "
         "Classify the following student query into exactly ONE of the following intents:\n"
@@ -120,13 +113,9 @@ def _classify_llm(query: str) -> Intent:
     )
 
     try:
-        from langchain_google_genai import ChatGoogleGenerativeAI
+        from app.ai.models import get_router_llm
 
-        llm = ChatGoogleGenerativeAI(
-            model="gemini-3.6-flash",
-            google_api_key=api_key,
-            max_tokens=20,
-        )
+        llm = get_router_llm()
         response = llm.invoke(prompt)
         raw_text = response.content
         if isinstance(raw_text, list):

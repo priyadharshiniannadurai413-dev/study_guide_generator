@@ -18,21 +18,25 @@ python-jose
 requests
 httpx
 
-# AI, LLM & LangChain
+# AI, LLM & LangChain (Native Providers)
 langchain
 langchain-core
 langchain-community
 langchain-mongodb
 langchain-google-genai
 langchain-mistralai
+langchain-groq
 langchain-text-splitters
 langchain-tavily
-groq
 
-# Document Processing & PDF Export
+# LangGraph (Multi-Agent Orchestration)
+langgraph
+
+# Document Processing & PDF/DOCX Export
 pypdf
 pdfplumber
-reportlab
+reportlab>=4.0.0
+python-docx>=1.1.0
 
 # Voice & Speech
 edge-tts

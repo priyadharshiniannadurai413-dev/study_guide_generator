@@ -14,7 +14,7 @@ from pymongo import UpdateOne
 from pymongo.operations import SearchIndexModel
 
 from app.core.config import settings
-from app.db.mongodb import get_vector_collection
+from app.db.mongodb import get_syllabus_collection, get_vector_collection, init_db_indexes
 from app.rag.config import (
     HYBRID_FINAL_TOP_K,
     HYBRID_KEYWORD_TOP_K,
@@ -25,8 +25,8 @@ from app.rag.embedding import get_embedder
 
 logger = logging.getLogger("uvicorn")
 
-INDEX_NAME = "vector_index"
-TEXT_INDEX_NAME = "text_index"
+INDEX_NAME = "syllabus_vector_index"
+TEXT_INDEX_NAME = "syllabus_text_index"
 
 
 def _format_doc_result(doc: Dict[str, Any], score: float = 0.0) -> Dict[str, Any]:
@@ -83,8 +83,8 @@ def merge_rrf(
 
 
 async def get_existing_chunk_ids() -> set[str]:
-    """Return set of chunk IDs already stored in MongoDB."""
-    collection = get_vector_collection()
+    """Return set of chunk IDs already stored in syllabus_vectors collection."""
+    collection = get_syllabus_collection()
     docs = await collection.find({}, {"chunk_id": 1, "id": 1, "_id": 1}).to_list(length=50000)
     res = set()
     for d in docs:
@@ -102,13 +102,13 @@ async def upsert_chunks(
     embeddings: List[List[float]],
     source_file: str = "my_college_syllabus.pdf",
 ) -> int:
-    """Store chunks and their embedding vectors in MongoDB Atlas."""
+    """Store syllabus chunks and their embedding vectors in MongoDB Atlas (syllabus_vectors)."""
     if len(chunks) != len(embeddings):
         raise ValueError(
             f"Chunk count ({len(chunks)}) does not match embeddings count ({len(embeddings)})"
         )
 
-    collection = get_vector_collection()
+    collection = get_syllabus_collection()
     operations: List[UpdateOne] = []
     now = datetime.now(timezone.utc)
 
@@ -122,6 +122,7 @@ async def upsert_chunks(
             "page_number": chunk.get("page_number", 1),
             "semester": chunk.get("semester"),
             "course_code": chunk.get("course_code"),
+            "is_global": True,
             "embedding": emb,
             "source_file": source_file,
             "created_at": now,
@@ -137,56 +138,14 @@ async def upsert_chunks(
     if operations:
         result = await collection.bulk_write(operations, ordered=False)
         total = (result.upserted_count or 0) + (result.modified_count or 0)
-        logger.info(f"[VectorStore] Upserted {total} chunks into MongoDB Atlas")
+        logger.info(f"[VectorStore] Upserted {total} syllabus chunks into syllabus_vectors")
         return total
     return 0
 
 
 async def ensure_indexes() -> None:
-    """Create the Atlas Vector Search index and text index if missing."""
-    collection = get_vector_collection()
-
-    # 1. Text index on the 'text' field for keyword search
-    try:
-        existing_indexes = await collection.index_information()
-        if TEXT_INDEX_NAME not in existing_indexes:
-            await collection.create_index(
-                [("text", "text")],
-                name=TEXT_INDEX_NAME,
-            )
-            logger.info(f"[OK] Created text index '{TEXT_INDEX_NAME}' on vector collection")
-    except Exception as exc:
-        logger.warning(f"[VectorStore] Text index note: {exc}")
-
-    # 2. Atlas Vector Search index on 'embedding'
-    try:
-        existing_search_indexes = await collection.list_search_indexes().to_list(length=100)
-        names = [idx.get("name") for idx in existing_search_indexes]
-        if INDEX_NAME not in names:
-            dim = len(get_embedder().embed_query("test"))
-            definition = {
-                "fields": [
-                    {
-                        "type": "vector",
-                        "path": "embedding",
-                        "numDimensions": dim,
-                        "similarity": "cosine",
-                    }
-                ]
-            }
-            await collection.create_search_index(
-                SearchIndexModel(
-                    definition=definition,
-                    name=INDEX_NAME,
-                    type="vectorSearch",
-                )
-            )
-            logger.info(f"[OK] Initiated Atlas Vector Search index '{INDEX_NAME}' ({dim} dims)")
-    except Exception as exc:
-        logger.info(
-            f"[VectorStore] Atlas Search index note: {exc} "
-            "(If using free tier or index building in background, search uses cosine fallback)"
-        )
+    """Initialize text and vector search indexes for syllabus_vectors and user_documents."""
+    await init_db_indexes()
 
 
 async def vector_search(
@@ -194,8 +153,10 @@ async def vector_search(
     top_k: int = HYBRID_VECTOR_TOP_K,
     filter_dict: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
-    """Execute vector similarity search in MongoDB Atlas."""
-    collection = get_vector_collection()
+    """Execute vector similarity search in syllabus_vectors collection."""
+    collection = get_syllabus_collection()
+    if collection is None:
+        return []
 
     # 1. Try Atlas $vectorSearch pipeline stage
     try:
@@ -258,8 +219,10 @@ async def keyword_search(
     top_k: int = HYBRID_KEYWORD_TOP_K,
     filter_dict: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
-    """Execute text/keyword search using MongoDB $text index, falling back to regex."""
-    collection = get_vector_collection()
+    """Execute text/keyword search using syllabus_vectors $text index, falling back to regex."""
+    collection = get_syllabus_collection()
+    if collection is None:
+        return []
 
     # 1. Try $text search
     try:

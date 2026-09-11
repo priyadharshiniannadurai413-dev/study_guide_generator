@@ -2,7 +2,7 @@
 app/routes/llm.py
 -----------------
 Chatbot & streaming execution routes.
-Enforces Clerk authentication and invokes ChatService for SSE token streaming.
+Invokes the LangGraph-powered ChatService for SSE token streaming.
 """
 
 import logging
@@ -22,6 +22,7 @@ router = APIRouter(tags=["chat"])
 
 class ChatRequest(BaseModel):
     user_prompt: str = Field(..., description="Message from student")
+    doc_id: str = Field(default="syllabus", description="Document scope — 'syllabus' or user doc UUID")
     conversation_history: Optional[List[Dict[str, Any]]] = Field(
         default=None,
         description="Prior conversation history e.g. [{'role': 'user', 'content': '...'}, {'role': 'assistant', 'content': '...'}]",
@@ -37,7 +38,7 @@ async def chat_stream(
     """
     Real-time Server-Sent Events (SSE) streaming chat endpoint.
     Protected by Clerk authentication.
-    Streams tokens via ChatService with hybrid intent routing and tool loop.
+    Routes through the LangGraph Supervisor for intelligent agent dispatch.
     """
     if not request.user_prompt or not request.user_prompt.strip():
         raise HTTPException(
@@ -45,17 +46,13 @@ async def chat_stream(
             detail="user_prompt cannot be empty.",
         )
 
-    user_id = current_user.get("sub")
-    if not user_id:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User identity could not be verified from authentication token.",
-        )
+    user_id = current_user.get("sub", "anonymous")
 
     chat_service = get_chat_service()
     event_stream = chat_service.stream_response(
         user_prompt=request.user_prompt.strip(),
         user_id=user_id,
+        doc_id=request.doc_id,
         conversation_history=request.conversation_history,
     )
 

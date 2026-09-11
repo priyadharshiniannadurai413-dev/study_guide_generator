@@ -13,6 +13,7 @@ from typing import Any, Dict, List
 
 from app.db.mongodb import get_user_doc_collection
 from app.rag.embedding import embed_query
+from app.rag.loader import is_front_matter
 
 logger = logging.getLogger("uvicorn")
 
@@ -110,7 +111,7 @@ async def _direct_chunk_fetch(
             "score": 1.0,
         }
         for d in docs
-        if d.get("text")
+        if d.get("text") and not is_front_matter(d.get("text", ""))
     ]
 
 
@@ -145,10 +146,13 @@ async def _in_memory_similarity_search(
 
     scored_chunks = []
     for doc in docs:
+        text = doc.get("text", "")
+        if not text or is_front_matter(text):
+            continue
         emb = doc.get("embedding")
         if not emb or not query_vector:
             scored_chunks.append({
-                "text": doc.get("text", ""),
+                "text": text,
                 "page_number": doc.get("page_number", 1),
                 "chunk_id": doc.get("chunk_id", ""),
                 "score": 0.5,
@@ -156,7 +160,7 @@ async def _in_memory_similarity_search(
             continue
         sim = _cosine_similarity(query_vector, emb)
         scored_chunks.append({
-            "text": doc.get("text", ""),
+            "text": text,
             "page_number": doc.get("page_number", 1),
             "chunk_id": doc.get("chunk_id", ""),
             "score": round(sim, 4),
@@ -244,8 +248,68 @@ def format_user_doc_context(chunks: List[Dict[str, Any]]) -> str:
 
     sections = []
     for i, c in enumerate(chunks, start=1):
-        page = c.get("page_number", "?")
         text = c.get("text", "").strip()
+        if not text or is_front_matter(text):
+            continue
+        page = c.get("page_number", "?")
         sections.append(f"[Excerpt {i} | Page {page}]\n{text}")
 
-    return "\n\n".join(sections)
+    return "\n\n".join(sections) if sections else "No substantive academic content found in the selected document."
+
+
+async def get_full_user_document(user_id: str, doc_id: str) -> List[Dict[str, Any]]:
+    """
+    Retrieve ALL chunks belonging to a document in sequential page order.
+    Sorts ascending by page_number and chunk_id.
+    Strictly isolated per user_id, with fallback to doc_id alone if session differs.
+    """
+    if not doc_id:
+        return []
+
+    collection = get_user_doc_collection()
+    if collection is None:
+        logger.error("[UserDocRetriever] MongoDB collection not available")
+        return []
+
+    cursor = collection.find(
+        {"user_id": user_id, "doc_id": doc_id},
+        {"text": 1, "page_number": 1, "chunk_id": 1, "_id": 0},
+    ).sort([("page_number", 1), ("chunk_id", 1)])
+    chunks = await cursor.to_list(length=None)
+
+    if not chunks:
+        # Fallback to doc_id alone to handle session/dev token variations
+        fallback_cursor = collection.find(
+            {"doc_id": doc_id},
+            {"text": 1, "page_number": 1, "chunk_id": 1, "_id": 0},
+        ).sort([("page_number", 1), ("chunk_id", 1)])
+        chunks = await fallback_cursor.to_list(length=None)
+
+    return chunks
+
+
+def assemble_document_context(chunks: List[Dict[str, Any]]) -> str:
+    """
+    Stitch sequential document chunks with explicit page separators.
+    Filters out non-substantive front-matter pages (copyright, publishers, TOC).
+    """
+    if not chunks:
+        return ""
+
+    snippets = []
+    for c in chunks:
+        txt = c.get("text", "").strip()
+        if not txt or is_front_matter(txt):
+            continue
+        page = c.get("page_number", "?")
+        snippets.append(f"--- [PAGE {page}] ---\n{txt}")
+
+    return "\n\n".join(snippets)
+
+
+__all__ = [
+    "get_user_doc_context",
+    "get_full_user_document",
+    "assemble_document_context",
+    "format_user_doc_context",
+]

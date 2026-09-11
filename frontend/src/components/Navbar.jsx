@@ -20,6 +20,7 @@ import {
   LayoutDashboard,
   ShieldCheck,
   KeyRound,
+  FileCheck2,
   X,
   Radio,
 } from 'lucide-react';
@@ -70,6 +71,7 @@ export function Navbar({ activeTab, setActiveTab }) {
     { id: 'documents', label: 'Documents', icon: FileText },
     { id: 'notes', label: 'Study Notes', icon: BookOpen },
     { id: 'quiz', label: 'MCQ Arena', icon: HelpCircle },
+    { id: 'test', label: '2-Mark Test', icon: FileCheck2 },
   ];
 
   return (

@@ -11,6 +11,7 @@ import { ChatPage } from './pages/ChatPage';
 import { DocumentsPage } from './pages/DocumentsPage';
 import { StudyNotesPage } from './pages/StudyNotesPage';
 import { QuizPage } from './pages/QuizPage';
+import { TwoMarkTestArena } from './components/study/TwoMarkTestArena';
 import { ToastProvider } from './context/ToastContext';
 import { AuthProvider } from './context/AuthContext';
 
@@ -75,7 +76,9 @@ function AppContent() {
           </div>
         )}
         {activeTab === 'dashboard' && <DashboardPage setActiveTab={setActiveTab} />}
-        {activeTab === 'chat' && <ChatPage />}
+        {activeTab === 'chat' && (
+          <ChatPage initialDocId={selectedDocForStudy} />
+        )}
         {activeTab === 'documents' && (
           <DocumentsPage
             setActiveTab={setActiveTab}
@@ -87,6 +90,9 @@ function AppContent() {
         )}
         {activeTab === 'quiz' && (
           <QuizPage initialDocId={selectedDocForStudy} />
+        )}
+        {activeTab === 'test' && (
+          <TwoMarkTestArena initialDocId={selectedDocForStudy} />
         )}
       </main>
 

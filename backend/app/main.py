@@ -102,9 +102,12 @@ def health_check():
     }
 
 
+from app.study_guide.router import router as study_guide_router
+
 # API routes
 app.include_router(github_auth.router)
 app.include_router(documents.router)
 app.include_router(study.router)
+app.include_router(study_guide_router)
 app.include_router(voice.router)
 app.include_router(llm.router)

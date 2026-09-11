@@ -45,6 +45,12 @@ class Settings(BaseSettings):
     # Frontend Integration
     FRONTEND_URL: Optional[str] = None
 
+    # Ingestion Limits & Batching
+    MAX_UPLOAD_SIZE_MB: int = 50
+    MAX_UPLOAD_SIZE_BYTES: int = 50 * 1024 * 1024  # 50 MB
+    MAX_PDF_PAGES: int = 50
+    EMBEDDING_BATCH_SIZE: int = 64
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

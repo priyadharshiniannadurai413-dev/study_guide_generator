@@ -137,11 +137,17 @@ export async function apiRequest(endpoint, options = {}, isRetry = false) {
     throw err;
   }
 
-  // Handle empty or audio/blob responses
+  // Handle empty, audio, PDF, and document blob responses
   const contentType = response.headers.get('content-type') || '';
   if (contentType.includes('application/json')) {
     return await response.json();
-  } else if (contentType.includes('audio/') || contentType.includes('application/octet-stream')) {
+  } else if (
+    contentType.includes('audio/') ||
+    contentType.includes('application/octet-stream') ||
+    contentType.includes('application/pdf') ||
+    contentType.includes('wordprocessingml') ||
+    contentType.includes('openxmlformats')
+  ) {
     return await response.blob();
   }
   return await response.text();
@@ -153,6 +159,7 @@ export async function apiRequest(endpoint, options = {}, isRetry = false) {
 export async function streamChatResponse({
   prompt,
   conversationHistory = [],
+  docId = 'syllabus',
   onToken,
   onError,
   onDone,
@@ -170,6 +177,7 @@ export async function streamChatResponse({
       headers,
       body: JSON.stringify({
         user_prompt: prompt,
+        doc_id: docId || 'syllabus',
         conversation_history: conversationHistory,
       }),
       signal,

@@ -54,6 +54,53 @@ export const endpoints = {
     });
   },
 
+  async exportPDF({ notes, topic, docId }) {
+    return await apiRequest('/api/study/export/pdf', {
+      method: 'POST',
+      body: JSON.stringify({
+        notes: notes || null,
+        topic: topic || null,
+        doc_id: docId || null,
+      }),
+    });
+  },
+
+  async exportDOCX({ notes, topic, docId }) {
+    return await apiRequest('/api/study/export/docx', {
+      method: 'POST',
+      body: JSON.stringify({
+        notes: notes || null,
+        topic: topic || null,
+        doc_id: docId || null,
+      }),
+    });
+  },
+
+  // 2-Mark Conceptual Test & Semantic Evaluation
+  async generateTwoMarkTest({ docId, pastedText, count = 5 }) {
+    return await apiRequest('/api/study/generate-test', {
+      method: 'POST',
+      body: JSON.stringify({
+        doc_id: docId || null,
+        pasted_text: pastedText || null,
+        question_count: parseInt(count, 10),
+      }),
+    });
+  },
+
+  async evaluateAnswer({ questionId, question, modelAnswer, keyPoints, studentAnswer }) {
+    return await apiRequest('/api/study/evaluate-answer', {
+      method: 'POST',
+      body: JSON.stringify({
+        question_id: questionId,
+        question,
+        model_answer: modelAnswer,
+        key_points: keyPoints,
+        student_answer: studentAnswer,
+      }),
+    });
+  },
+
   // Voice Processing
   async transcribeAudio(audioBlob, filename = 'audio.wav') {
     const formData = new FormData();

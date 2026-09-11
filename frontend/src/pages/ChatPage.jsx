@@ -23,7 +23,7 @@ import { VoiceRecorder } from '../components/VoiceRecorder';
 import { DocumentSelector } from '../components/DocumentSelector';
 import { useToast } from '../context/ToastContext';
 
-export function ChatPage() {
+export function ChatPage({ initialDocId = 'syllabus' }) {
   const [messages, setMessages] = useState([
     {
       id: 'welcome',
@@ -34,11 +34,17 @@ export function ChatPage() {
   ]);
   const [inputPrompt, setInputPrompt] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
-  const [selectedDocId, setSelectedDocId] = useState('syllabus');
+  const [selectedDocId, setSelectedDocId] = useState(initialDocId || 'syllabus');
 
   const messagesEndRef = useRef(null);
   const abortControllerRef = useRef(null);
   const { addToast } = useToast();
+
+  useEffect(() => {
+    if (initialDocId) {
+      setSelectedDocId(initialDocId);
+    }
+  }, [initialDocId]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -77,6 +83,7 @@ export function ChatPage() {
     try {
       await streamChatResponse({
         prompt: promptToSend,
+        docId: selectedDocId,
         conversationHistory: historyPayload,
         signal: abortController.signal,
         onToken: (token) => {

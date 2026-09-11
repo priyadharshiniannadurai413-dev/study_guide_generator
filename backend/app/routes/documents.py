@@ -13,14 +13,16 @@ from typing import Any, Dict, List
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
 from app.auth.dependencies import get_current_user
+from app.core.config import settings
 from app.db.mongodb import get_user_doc_collection
+from app.rag.loader import validate_and_count_pages
 from app.rag.user_doc_service import process_user_pdf
 
 logger = logging.getLogger("uvicorn")
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
-MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024  # 25 MB
+CHUNK_READ_SIZE = 1024 * 1024  # 1MB per stream chunk
 
 
 @router.post("/upload", status_code=status.HTTP_201_CREATED)
@@ -33,7 +35,8 @@ async def upload_document(
 
     Validates:
     - MIME type / file extension is PDF
-    - File size is within 25MB limit
+    - File size is within 50MB limit (via chunked byte streaming)
+    - Page count is within 50 pages limit
 
     Stores embeddings in `user_documents` partitioned strictly by `user_id`.
     """
@@ -53,18 +56,27 @@ async def upload_document(
             detail="Only PDF documents (.pdf) are supported.",
         )
 
-    # 2. Read and validate file size and PDF header
-    file_bytes = await file.read()
+    # 2. Chunked byte streaming with 50MB limit enforcement
+    chunks_buffer = []
+    total_bytes = 0
+
+    while True:
+        chunk = await file.read(CHUNK_READ_SIZE)
+        if not chunk:
+            break
+        total_bytes += len(chunk)
+        if total_bytes > settings.MAX_UPLOAD_SIZE_BYTES:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"File exceeds maximum allowed size of {settings.MAX_UPLOAD_SIZE_MB}MB.",
+            )
+        chunks_buffer.append(chunk)
+
+    file_bytes = b"".join(chunks_buffer)
     if not file_bytes:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Uploaded file is empty.",
-        )
-
-    if len(file_bytes) > MAX_FILE_SIZE_BYTES:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"File exceeds maximum allowed size of 25MB (size: {len(file_bytes) / (1024 * 1024):.1f}MB).",
         )
 
     if not file_bytes.startswith(b"%PDF"):
@@ -73,7 +85,16 @@ async def upload_document(
             detail="Invalid file: Not a valid PDF document.",
         )
 
-    # 3. Ingest PDF and compute embeddings
+    # 3. Validate page count up to 50 pages
+    try:
+        total_pages = validate_and_count_pages(file_bytes, max_pages=settings.MAX_PDF_PAGES)
+    except ValueError as page_err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(page_err),
+        )
+
+    # 4. Ingest PDF and compute embeddings
     try:
         summary = await process_user_pdf(
             file_bytes=file_bytes,
@@ -85,6 +106,7 @@ async def upload_document(
             "doc_id": summary["doc_id"],
             "filename": summary["filename"],
             "total_chunks": summary["total_chunks"],
+            "total_pages": total_pages,
         }
     except ValueError as val_err:
         logger.warning(f"[DocumentsRoute] Validation error for user {user_id}: {val_err}")

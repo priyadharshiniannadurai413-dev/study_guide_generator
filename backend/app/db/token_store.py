@@ -43,6 +43,8 @@ def _get_fernet() -> Fernet:
 
 
 def get_token_collection():
+    if db_instance.client is None:
+        return None
     db_name = getattr(settings, "DB_NAME", None) or "Chatbot"
     return db_instance.client[db_name]["github_tokens"]
 
@@ -51,8 +53,10 @@ async def _ensure_index() -> None:
     global _index_ready
     if _index_ready:
         return
-    await get_token_collection().create_index("clerk_user_id", unique=True)
-    _index_ready = True
+    coll = get_token_collection()
+    if coll is not None:
+        await coll.create_index("clerk_user_id", unique=True)
+        _index_ready = True
 
 
 async def save_token(
@@ -62,9 +66,14 @@ async def save_token(
     scopes: str,
 ) -> None:
     """Encrypt and upsert the user's GitHub access token."""
+    coll = get_token_collection()
+    if coll is None:
+        logger.warning("[TokenStore] MongoDB not connected — cannot save GitHub token.")
+        return
+
     encrypted = _get_fernet().encrypt(access_token.encode()).decode()
     await _ensure_index()
-    await get_token_collection().update_one(
+    await coll.update_one(
         {"clerk_user_id": clerk_user_id},
         {
             "$set": {
@@ -99,7 +108,11 @@ async def save_user_token(
 
 async def get_decrypted_token(clerk_user_id: str) -> str | None:
     """Return the plaintext access token for a user, or None if not connected."""
-    doc = await get_token_collection().find_one({"clerk_user_id": clerk_user_id})
+    coll = get_token_collection()
+    if coll is None:
+        return None
+
+    doc = await coll.find_one({"clerk_user_id": clerk_user_id})
     if not doc:
         return None
     try:
@@ -114,7 +127,11 @@ async def get_decrypted_token(clerk_user_id: str) -> str | None:
 
 async def get_github_login(clerk_user_id: str) -> str | None:
     """Return the connected GitHub username for display, or None."""
-    doc = await get_token_collection().find_one(
+    coll = get_token_collection()
+    if coll is None:
+        return None
+
+    doc = await coll.find_one(
         {"clerk_user_id": clerk_user_id},
         {"github_login": 1},
     )
@@ -123,7 +140,11 @@ async def get_github_login(clerk_user_id: str) -> str | None:
 
 async def delete_token(clerk_user_id: str) -> bool:
     """Remove the user's stored token. Returns True if one was deleted."""
-    result = await get_token_collection().delete_one({"clerk_user_id": clerk_user_id})
+    coll = get_token_collection()
+    if coll is None:
+        return False
+
+    result = await coll.delete_one({"clerk_user_id": clerk_user_id})
     if result.deleted_count:
         logger.info(f"[TokenStore] Deleted GitHub token for {clerk_user_id}")
     return result.deleted_count > 0

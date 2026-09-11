@@ -12,9 +12,8 @@ import {
   HelpCircle,
   ArrowRight,
   UploadCloud,
-  Cpu,
-  Volume2,
-  CheckCircle2,
+  FolderGit2,
+  FileCheck2,
 } from 'lucide-react';
 import { endpoints } from '../api/endpoints';
 
@@ -74,6 +73,16 @@ export function DashboardPage({ setActiveTab }) {
       actionText: 'Take Quiz',
     },
     {
+      title: 'GitHub Code Workbench',
+      description:
+        'Inspect student repositories, browse and read source files, check commits, and run automated senior developer code reviews via MCP.',
+      icon: FolderGit2,
+      color: '#ec4899',
+      bgGlow: 'rgba(236, 72, 153, 0.15)',
+      action: () => setActiveTab('workbench'),
+      actionText: 'Open Workbench',
+    },
+    {
       title: 'Document Knowledge Vault',
       description:
         'Upload your lecture slides, class notes, and textbook PDFs up to 25MB for dense vector embeddings and isolated retrieval.',
@@ -82,6 +91,16 @@ export function DashboardPage({ setActiveTab }) {
       bgGlow: 'rgba(16, 185, 129, 0.15)',
       action: () => setActiveTab('documents'),
       actionText: 'Manage Vault',
+    },
+    {
+      title: 'University Exam Prep',
+      description:
+        'Practice 2-mark conceptual questions with automated AI semantic evaluation, key point rubrics, and detailed scoring feedback.',
+      icon: FileCheck2,
+      color: '#f59e0b',
+      bgGlow: 'rgba(245, 158, 11, 0.15)',
+      action: () => setActiveTab('test'),
+      actionText: 'Launch Exam Prep',
     },
   ];
 
@@ -133,116 +152,6 @@ export function DashboardPage({ setActiveTab }) {
               <FileText size={18} />
               <span>Upload Course Material</span>
             </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Metrics Row */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-          gap: '18px',
-          marginBottom: '36px',
-        }}
-      >
-        <div className="glass-card" style={{ padding: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div
-              style={{
-                width: '42px',
-                height: '42px',
-                borderRadius: 'var(--radius-md)',
-                background: 'rgba(99, 102, 241, 0.15)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'var(--primary)',
-              }}
-            >
-              <FileText size={20} />
-            </div>
-            <div>
-              <div style={{ fontSize: '1.5rem', fontWeight: 800 }}>{docCount}</div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                Indexed User Documents
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="glass-card" style={{ padding: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div
-              style={{
-                width: '42px',
-                height: '42px',
-                borderRadius: 'var(--radius-md)',
-                background: 'rgba(16, 185, 129, 0.15)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'var(--success)',
-              }}
-            >
-              <CheckCircle2 size={20} />
-            </div>
-            <div>
-              <div style={{ fontSize: '1.5rem', fontWeight: 800 }}>Global RAG</div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                University Syllabus Active
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="glass-card" style={{ padding: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div
-              style={{
-                width: '42px',
-                height: '42px',
-                borderRadius: 'var(--radius-md)',
-                background: 'rgba(6, 182, 212, 0.15)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'var(--cyan)',
-              }}
-            >
-              <Cpu size={20} />
-            </div>
-            <div>
-              <div style={{ fontSize: '1.5rem', fontWeight: 800 }}>Mistral + Gemini</div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                Multi-Model Failover
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="glass-card" style={{ padding: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div
-              style={{
-                width: '42px',
-                height: '42px',
-                borderRadius: 'var(--radius-md)',
-                background: 'rgba(139, 92, 246, 0.15)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'var(--secondary)',
-              }}
-            >
-              <Volume2 size={20} />
-            </div>
-            <div>
-              <div style={{ fontSize: '1.5rem', fontWeight: 800 }}>Whisper + TTS</div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                Voice I/O Enabled
-              </div>
-            </div>
           </div>
         </div>
       </div>

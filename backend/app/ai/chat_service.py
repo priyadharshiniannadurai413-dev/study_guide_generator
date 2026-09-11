@@ -36,6 +36,7 @@ class ChatService:
         num_questions: int = 5,
         conversation_history: Optional[List[dict]] = None,
         route: Optional[str] = None,
+        enable_web: bool = False,
     ) -> Dict[str, Any]:
         """
         Invoke the full Supervisor graph and return the result state.
@@ -47,9 +48,10 @@ class ChatService:
             num_questions:        Number of MCQs to generate (only used by mcq agent).
             conversation_history: Prior conversation turns.
             route:                Optional explicit agent route (e.g. 'study_notes', 'mcq').
+            enable_web:           Whether to actively fetch external web documentation.
 
         Returns:
-            Final graph state dict containing final_response, study_notes, quiz_deck, etc.
+            Final graph state dict containing final_response, study_notes, quiz_deck, web_sources, etc.
         """
         # Build initial state
         initial_state = {
@@ -63,6 +65,14 @@ class ChatService:
             "study_notes": None,
             "quiz_deck": None,
             "num_questions": num_questions,
+            "enable_web": enable_web,
+            "rag_context": "",
+            "rag_sources": [],
+            "web_context": "",
+            "web_sources": [],
+            "combined_context": "",
+            "web_fetch_error": None,
+            "web_sufficiency_score": 1.0,
         }
 
         logger.info(

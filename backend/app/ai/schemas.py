@@ -161,6 +161,7 @@ class AdaptiveStudyNotes(BaseModel):
     core_concepts: Optional[List[Dict[str, Any]]] = None
     syntax_and_formulas: Optional[List[str]] = None
     high_yield_revision_points: Optional[List[str]] = None
+    external_references: Optional[List[Dict[str, str]]] = None
 
     @model_validator(mode="before")
     @classmethod
@@ -244,10 +245,10 @@ class AdaptiveStudyNotes(BaseModel):
 class RouteDecision(BaseModel):
     """Structured output from the supervisor router node."""
 
-    route: Literal["curriculum", "study_notes", "mcq", "direct_answer"] = Field(
+    route: Literal["curriculum", "study_notes", "mcq", "direct_answer", "github"] = Field(
         description=(
             "The classified intent route. Must be exactly one of: "
-            "curriculum, study_notes, mcq, direct_answer"
+            "curriculum, study_notes, mcq, direct_answer, github"
         )
     )
 

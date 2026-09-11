@@ -42,10 +42,12 @@ from app.services.evaluation_service import (
 from app.services.study_generator import (
     CompleteStudyPack,
     ConceptBlock,
+    DifficultyLevel,
     TopicStudyNotes,
     generate_adaptive_study_notes,
     generate_adaptive_study_notes_async,
     generate_complete_study_pack_async,
+    generate_mcq_quiz_async,
     generate_topic_study_notes_async,
 )
 
@@ -55,25 +57,55 @@ router = APIRouter(prefix="/api/study", tags=["study"])
 
 
 class StudyNotesRequest(BaseModel):
-    doc_id: str = Field(description="UUID of uploaded document or 'syllabus'")
+    doc_id: Optional[str] = Field(default="syllabus", description="UUID of uploaded document or 'syllabus'")
+    url: Optional[str] = Field(default=None, description="Optional web documentation URL to synthesize study notes from")
     topic: Optional[str] = Field(default=None, description="Optional focus topic within the document")
+    difficulty: Literal["beginner", "intermediate", "advanced"] = Field(
+        default="intermediate",
+        description="Target academic difficulty level ('beginner', 'intermediate', 'advanced')",
+    )
+    enable_web: bool = Field(
+        default=False,
+        description="Enable Fetch MCP external web documentation enrichment",
+    )
 
 
 class TopicNotesRequest(BaseModel):
     topic: str = Field(description="Specific technical topic, e.g. 'Pointers in C' or 'Fourier Transform'")
     doc_id: Optional[str] = Field(default=None, description="Optional doc_id of user document or 'syllabus'")
+    difficulty: Literal["beginner", "intermediate", "advanced"] = Field(
+        default="intermediate",
+        description="Target academic difficulty level ('beginner', 'intermediate', 'advanced')",
+    )
+    enable_web: bool = Field(
+        default=False,
+        description="Enable Fetch MCP external web documentation enrichment",
+    )
 
 
 class MCQRequest(BaseModel):
-    doc_id: str = Field(description="UUID of uploaded document or 'syllabus'")
-    count: int = Field(default=5, ge=1, le=20, description="Number of MCQs to generate (1-20)")
+    doc_id: Optional[str] = Field(default=None, description="UUID of uploaded document or 'syllabus'")
+    url: Optional[str] = Field(default=None, description="Optional public web URL to fetch content via Fetch MCP")
+    count: int = Field(default=20, ge=1, le=20, description="Number of MCQs to generate (1-20)")
     topic: Optional[str] = Field(default=None, description="Optional focus topic within the document")
+    difficulty: Literal["beginner", "intermediate", "advanced"] = Field(
+        default="intermediate",
+        description="Target academic difficulty level ('beginner', 'intermediate', 'advanced')",
+    )
+    enable_web: bool = Field(
+        default=False,
+        description="Enable Fetch MCP external web documentation enrichment",
+    )
 
 
 class ExportNotesRequest(BaseModel):
     notes: Optional[Dict[str, Any]] = Field(default=None, description="Pre-generated TopicStudyNotes or StudyNotes payload")
     topic: Optional[str] = Field(default=None, description="Topic name if generating on the fly")
     doc_id: Optional[str] = Field(default=None, description="Optional doc_id if generating on the fly")
+    difficulty: Literal["beginner", "intermediate", "advanced"] = Field(
+        default="intermediate",
+        description="Target academic difficulty level ('beginner', 'intermediate', 'advanced')",
+    )
 
 
 class GeneratePackRequest(BaseModel):
@@ -158,6 +190,7 @@ async def generate_topic_notes(
     """
     Generate student-friendly, high-yield topic study notes.
     Outputs structured TopicStudyNotes with ConceptBlocks, syntax/formulas, and pitfalls.
+    Calibrated by difficulty ('beginner', 'intermediate', 'advanced').
     """
     user_id = current_user.get("sub", "anonymous")
     topic = request.topic.strip()
@@ -170,7 +203,11 @@ async def generate_topic_notes(
     context_text = await _fetch_context_for_topic(user_id=user_id, topic=topic, doc_id=request.doc_id)
 
     try:
-        notes = await generate_topic_study_notes_async(topic=topic, context_text=context_text)
+        notes = await generate_topic_study_notes_async(
+            topic=topic,
+            context_text=context_text,
+            difficulty=request.difficulty,
+        )
         return notes.model_dump()
     except Exception as exc:
         logger.error(f"[StudyRoute] Topic notes generation failed: {exc}")
@@ -189,17 +226,30 @@ async def generate_notes(
     Generate high-yield structured study notes from an uploaded PDF or syllabus.
     Invokes the LangGraph StudyNotes agent via the Supervisor workflow,
     falling back to direct topic-notes generation if requested.
+    Calibrated by difficulty ('beginner', 'intermediate', 'advanced').
     """
     user_id = current_user.get("sub", "anonymous")
+
+    # Check if a direct web URL was requested for study notes synthesis via Fetch MCP
+    if request.url and request.url.strip():
+        from app.ai.web_content_service import get_web_content_service
+        web_service = get_web_content_service()
+        web_result = await web_service.generate_study_notes_from_web(
+            url=request.url.strip(),
+            topic=request.topic,
+            difficulty=request.difficulty,
+        )
+        return web_result["notes"]
+
     if not request.doc_id or not request.doc_id.strip():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="doc_id cannot be empty.",
+            detail="doc_id cannot be empty when url is not provided.",
         )
 
     # Build the user query for the graph
     topic = request.topic or "comprehensive study notes covering all key topics"
-    user_prompt = f"Generate study notes for: {topic}"
+    user_prompt = f"Generate {request.difficulty} difficulty study notes for: {topic}"
 
     chat_service = get_chat_service()
 
@@ -209,25 +259,39 @@ async def generate_notes(
             user_id=user_id,
             doc_id=request.doc_id.strip(),
             route="study_notes",
+            enable_web=request.enable_web,
         )
 
         # If the graph produced structured study_notes, return them
         study_notes = result.get("study_notes")
+        web_sources = result.get("web_sources") or []
         if study_notes:
+            dumped = None
             try:
                 # Convert or validate to AdaptiveStudyNotes
                 if "sections" in study_notes:
-                    return AdaptiveStudyNotes.model_validate(study_notes).model_dump()
-                if "concepts" in study_notes:
-                    return TopicStudyNotes.model_validate(study_notes).to_adaptive_study_notes().model_dump()
-                validated = StudyNotes.model_validate(study_notes)
-                return validated.to_adaptive_study_notes().model_dump()
+                    dumped = AdaptiveStudyNotes.model_validate(study_notes).model_dump()
+                elif "concepts" in study_notes:
+                    dumped = TopicStudyNotes.model_validate(study_notes).to_adaptive_study_notes().model_dump()
+                else:
+                    dumped = StudyNotes.model_validate(study_notes).to_adaptive_study_notes().model_dump()
             except Exception:
-                return study_notes
+                dumped = study_notes if isinstance(study_notes, dict) else {"content": str(study_notes)}
+
+            if isinstance(dumped, dict):
+                dumped["sources"] = {
+                    "rag": [request.doc_id],
+                    "web": web_sources,
+                }
+            return dumped
 
         # Fallback: try direct adaptive generator
         context_text = await _fetch_context_for_topic(user_id=user_id, topic=topic, doc_id=request.doc_id)
-        adaptive_notes = await generate_adaptive_study_notes_async(topic=topic, context_text=context_text)
+        adaptive_notes = await generate_adaptive_study_notes_async(
+            topic=topic,
+            context_text=context_text,
+            difficulty=request.difficulty,
+        )
         return adaptive_notes.model_dump()
 
     except HTTPException:
@@ -237,7 +301,11 @@ async def generate_notes(
         # Direct fallback
         try:
             context_text = await _fetch_context_for_topic(user_id=user_id, topic=topic, doc_id=request.doc_id)
-            adaptive_notes = await generate_adaptive_study_notes_async(topic=topic, context_text=context_text)
+            adaptive_notes = await generate_adaptive_study_notes_async(
+                topic=topic,
+                context_text=context_text,
+                difficulty=request.difficulty,
+            )
             return adaptive_notes.model_dump()
         except Exception as direct_exc:
             raise HTTPException(
@@ -251,6 +319,7 @@ async def export_study_notes(
     topic: Optional[str] = Query("Study Guide"),
     doc_id: Optional[str] = Query(None),
     file_format: Literal["pdf", "docx"] = Query("pdf"),
+    difficulty: Literal["beginner", "intermediate", "advanced"] = Query("intermediate"),
     current_user: dict = Depends(get_current_user),
 ):
     """
@@ -276,7 +345,7 @@ async def export_study_notes(
             doc_id=doc_id,
         )
 
-    notes = generate_adaptive_study_notes(topic=topic_clean, context=raw_context)
+    notes = generate_adaptive_study_notes(topic=topic_clean, context=raw_context, difficulty=difficulty)
 
     clean_filename = "".join(c for c in topic_clean if c.isalnum() or c in (" ", "_")).strip().replace(" ", "_")[:30]
     if not clean_filename:
@@ -342,7 +411,11 @@ async def export_pdf(
     # Otherwise generate on the fly if topic is provided
     topic = request.topic or "Study Notes"
     context_text = await _fetch_context_for_topic(user_id=user_id, topic=topic, doc_id=request.doc_id)
-    notes = await generate_adaptive_study_notes_async(topic=topic, context_text=context_text)
+    notes = await generate_adaptive_study_notes_async(
+        topic=topic,
+        context_text=context_text,
+        difficulty=request.difficulty,
+    )
 
     pdf_buf = export_notes_to_pdf(notes)
     filename = _safe_filename(notes.title or notes.topic_title or topic, "pdf")
@@ -361,13 +434,18 @@ async def export_pdf(
 async def download_pdf_get(
     topic: Optional[str] = "Study Guide",
     doc_id: Optional[str] = "syllabus",
+    difficulty: Literal["beginner", "intermediate", "advanced"] = Query("intermediate"),
     current_user: dict = Depends(get_current_user),
 ):
     """Direct GET download endpoint for study notes PDF."""
     user_id = current_user.get("sub", "anonymous")
     topic_clean = topic or "Study Guide"
     context_text = await _fetch_context_for_topic(user_id=user_id, topic=topic_clean, doc_id=doc_id)
-    notes = await generate_adaptive_study_notes_async(topic=topic_clean, context_text=context_text)
+    notes = await generate_adaptive_study_notes_async(
+        topic=topic_clean,
+        context_text=context_text,
+        difficulty=difficulty,
+    )
 
     pdf_buf = export_notes_to_pdf(notes)
     filename = _safe_filename(notes.title or notes.topic_title or topic_clean, "pdf")
@@ -422,7 +500,11 @@ async def export_docx(
     # Otherwise generate on the fly if topic is provided
     topic = request.topic or "Study Notes"
     context_text = await _fetch_context_for_topic(user_id=user_id, topic=topic, doc_id=request.doc_id)
-    notes = await generate_adaptive_study_notes_async(topic=topic, context_text=context_text)
+    notes = await generate_adaptive_study_notes_async(
+        topic=topic,
+        context_text=context_text,
+        difficulty=request.difficulty,
+    )
 
     docx_buf = export_notes_to_docx(notes)
     filename = _safe_filename(notes.title or notes.topic_title or topic, "docx")
@@ -441,13 +523,18 @@ async def export_docx(
 async def download_docx_get(
     topic: Optional[str] = "Study Guide",
     doc_id: Optional[str] = "syllabus",
+    difficulty: Literal["beginner", "intermediate", "advanced"] = Query("intermediate"),
     current_user: dict = Depends(get_current_user),
 ):
     """Direct GET download endpoint for study notes Word (.docx) document."""
     user_id = current_user.get("sub", "anonymous")
     topic_clean = topic or "Study Guide"
     context_text = await _fetch_context_for_topic(user_id=user_id, topic=topic_clean, doc_id=doc_id)
-    notes = await generate_adaptive_study_notes_async(topic=topic_clean, context_text=context_text)
+    notes = await generate_adaptive_study_notes_async(
+        topic=topic_clean,
+        context_text=context_text,
+        difficulty=difficulty,
+    )
 
     docx_buf = export_notes_to_docx(notes)
     filename = _safe_filename(notes.title or notes.topic_title or topic_clean, "docx")
@@ -467,18 +554,28 @@ async def generate_mcqs(
     current_user: dict = Depends(get_current_user),
 ):
     """
-    Generate an academic multiple-choice quiz from an uploaded PDF or syllabus.
-    Invokes the LangGraph MCQ agent via the Supervisor workflow.
+    Generate an academic multiple-choice quiz from an uploaded PDF, syllabus, or web URL via Fetch MCP.
+    Calibrated strictly by difficulty ('beginner', 'intermediate', 'advanced').
+    Defaults to 20 MCQs with 4 options and detailed conceptual explanations.
     """
     user_id = current_user.get("sub", "anonymous")
-    if not request.doc_id or not request.doc_id.strip():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="doc_id cannot be empty.",
+
+    # Check if a direct web URL was requested for MCQ synthesis via Fetch MCP
+    if request.url and request.url.strip():
+        from app.ai.web_content_service import get_web_content_service
+        web_service = get_web_content_service()
+        web_result = await web_service.generate_mcqs_from_web(
+            url=request.url.strip(),
+            count=request.count,
+            topic=request.topic,
+            difficulty=request.difficulty,
         )
+        return web_result["quiz_deck"]
+
+    doc_id = (request.doc_id or "syllabus").strip()
 
     topic = request.topic or "key concepts and important topics"
-    user_prompt = f"Generate {request.count} MCQs for: {topic}"
+    user_prompt = f"Generate exactly {request.count} {request.difficulty.upper()} difficulty MCQs for: {topic}"
 
     chat_service = get_chat_service()
 
@@ -486,38 +583,62 @@ async def generate_mcqs(
         result = await chat_service.invoke(
             user_prompt=user_prompt,
             user_id=user_id,
-            doc_id=request.doc_id.strip(),
+            doc_id=doc_id,
             num_questions=request.count,
             route="mcq",
+            enable_web=request.enable_web,
         )
 
         quiz_deck = result.get("quiz_deck")
+        web_sources = result.get("web_sources") or []
         if quiz_deck:
+            dumped = None
             try:
-                validated = QuizDeck.model_validate(quiz_deck)
-                return validated.model_dump()
+                dumped = QuizDeck.model_validate(quiz_deck).model_dump()
             except Exception:
-                return quiz_deck
+                dumped = quiz_deck if isinstance(quiz_deck, dict) else {"questions": quiz_deck}
+            if isinstance(dumped, dict):
+                dumped["sources"] = {
+                    "rag": [doc_id],
+                    "web": web_sources,
+                }
+            return dumped
 
         final_response = result.get("final_response", "")
-        try:
-            parsed = json.loads(final_response)
-            validated = QuizDeck.model_validate(parsed)
-            return validated.model_dump()
-        except (json.JSONDecodeError, Exception):
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to generate structured MCQ quiz.",
-            )
+        if final_response:
+            try:
+                parsed = json.loads(final_response)
+                validated = QuizDeck.model_validate(parsed)
+                return validated.model_dump()
+            except (json.JSONDecodeError, Exception):
+                pass
+
+        # Fallback to direct generator with difficulty calibration
+        context_text = await _fetch_context_for_topic(user_id=user_id, topic=topic, doc_id=doc_id)
+        deck = await generate_mcq_quiz_async(
+            context_text=context_text,
+            num_questions=request.count,
+            difficulty=request.difficulty,
+        )
+        return deck.model_dump()
 
     except HTTPException:
         raise
     except Exception as exc:
-        logger.error(f"[StudyRoute] MCQ generation failed: {exc}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to generate MCQ quiz: {exc}",
-        )
+        logger.error(f"[StudyRoute] MCQ generation via graph encountered '{exc}', falling back to direct generator...")
+        try:
+            context_text = await _fetch_context_for_topic(user_id=user_id, topic=topic, doc_id=doc_id)
+            deck = await generate_mcq_quiz_async(
+                context_text=context_text,
+                num_questions=request.count,
+                difficulty=request.difficulty,
+            )
+            return deck.model_dump()
+        except Exception as direct_exc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to generate MCQ quiz: {direct_exc}",
+            )
 
 
 @router.post("/generate-pack")

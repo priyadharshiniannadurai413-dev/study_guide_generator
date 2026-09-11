@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
-import { Download, FileText, Loader2, BookOpen } from 'lucide-react';
+import { Download, FileText, Loader2, BookOpen, Globe, ExternalLink } from 'lucide-react';
 import { useAuth } from '@clerk/clerk-react';
 import { getEffectiveToken } from '../../api/client';
 
@@ -27,6 +27,14 @@ export interface StudyNotesData {
   }>;
   actionable_takeaways?: string[];
   high_yield_revision_points?: string[];
+  sources?: {
+    rag?: string[];
+    web?: Array<{
+      title?: string;
+      url?: string;
+      tier?: string;
+    }>;
+  };
 }
 
 interface Props {
@@ -362,6 +370,63 @@ export const StudyDocumentViewer: React.FC<Props> = ({ notes, topic, docId }) =>
                 </li>
               ))}
             </ul>
+          </div>
+        )}
+
+        {/* Verified External Citations (Fetch MCP) */}
+        {notes.sources?.web && notes.sources.web.length > 0 && (
+          <div
+            style={{
+              marginTop: '32px',
+              padding: '20px 24px',
+              border: '1px solid #cbd5e1',
+              backgroundColor: '#f1f5f9',
+              borderRadius: '12px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+              <Globe size={18} color="#2563eb" />
+              <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: '#0f172a' }}>
+                Verified External Web Citations (Fetch MCP)
+              </h3>
+            </div>
+            <p style={{ margin: '0 0 14px', fontSize: '0.82rem', color: '#64748b' }}>
+              These external technical references were dynamically retrieved and validated to enrich this study guide:
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {notes.sources.web.map((src, i) => (
+                <a
+                  key={i}
+                  href={src.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    backgroundColor: '#ffffff',
+                    border: '1px solid #e2e8f0',
+                    textDecoration: 'none',
+                    color: '#1e293b',
+                    fontSize: '0.84rem',
+                    fontWeight: 500,
+                    transition: 'border-color 0.15s ease',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
+                    <span style={{ fontSize: '0.70rem', background: '#dbeafe', color: '#1e40af', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
+                      {src.tier || 'DOCS'}
+                    </span>
+                    <span style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                      {src.title || src.url}
+                    </span>
+                  </div>
+                  <ExternalLink size={14} color="#64748b" style={{ flexShrink: 0, marginLeft: '8px' }} />
+                </a>
+              ))}
+            </div>
           </div>
         )}
       </div>

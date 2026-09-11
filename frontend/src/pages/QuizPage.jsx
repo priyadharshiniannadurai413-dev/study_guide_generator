@@ -3,7 +3,7 @@
  * Interactive MCQ Quiz Arena with instant feedback, explanations, and confetti score review.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import confetti from 'canvas-confetti';
 import {
   HelpCircle,
@@ -17,17 +17,29 @@ import {
   ChevronLeft,
   Loader2,
   Award,
+  Globe,
+  Minus,
+  Plus,
 } from 'lucide-react';
 import { endpoints } from '../api/endpoints';
 import { DocumentSelector } from '../components/DocumentSelector';
 import { useToast } from '../context/ToastContext';
+import { MCQArena } from '../components/study/MCQArena';
 
 export function QuizPage({ initialDocId = 'syllabus' }) {
   const [selectedDocId, setSelectedDocId] = useState(initialDocId);
-  const [questionCount, setQuestionCount] = useState(5);
+  const [webUrl, setWebUrl] = useState('');
+  const [questionCount, setQuestionCount] = useState(20);
+  const [difficulty, setDifficulty] = useState('intermediate');
+  const [enableWeb, setEnableWeb] = useState(() => {
+    return localStorage.getItem('studysync_mcp_fetch_auto_enrich') === 'true';
+  });
   const [focusTopic, setFocusTopic] = useState('');
   const [quizDeck, setQuizDeck] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [genProgress, setGenProgress] = useState(0);
+  const [genStatusText, setGenStatusText] = useState('');
+  const genIntervalRef = useRef(null);
 
   // Gameplay state
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -41,20 +53,62 @@ export function QuizPage({ initialDocId = 'syllabus' }) {
     }
   }, [initialDocId]);
 
+  // Clean up interval on unmount
+  useEffect(() => {
+    return () => {
+      if (genIntervalRef.current) clearInterval(genIntervalRef.current);
+    };
+  }, []);
+
   const handleGenerateQuiz = async (e) => {
     if (e) e.preventDefault();
-    if (!selectedDocId) {
-      addToast('Please select a knowledge source.', 'warning');
+    if (!selectedDocId && !webUrl.trim()) {
+      addToast('Please select a knowledge source document or provide a web URL.', 'warning');
       return;
     }
 
     try {
       setLoading(true);
+      setGenProgress(14);
+      setGenStatusText(
+        webUrl.trim()
+          ? 'Connecting to Fetch MCP & retrieving webpage...'
+          : 'Querying vector embeddings & analyzing syllabus scope...'
+      );
+
+      let current = 14;
+      if (genIntervalRef.current) clearInterval(genIntervalRef.current);
+      genIntervalRef.current = setInterval(() => {
+        current += Math.floor(Math.random() * 8) + 4;
+        if (current > 92) current = 92;
+        setGenProgress(current);
+
+        if (current >= 35 && current < 65) {
+          setGenStatusText(
+            webUrl.trim()
+              ? 'Parsing article structure & extracting core technical content...'
+              : 'Synthesizing question stems & calibrating depth...'
+          );
+        } else if (current >= 65 && current < 88) {
+          setGenStatusText('Formulating distractor options & pedagogical rationales...');
+        } else if (current >= 88) {
+          setGenStatusText('Validating answer keys and formatting quiz deck...');
+        }
+      }, 350);
+
       const deck = await endpoints.generateMCQs({
-        docId: selectedDocId,
+        docId: selectedDocId || undefined,
+        url: webUrl.trim() || undefined,
         count: questionCount,
         topic: focusTopic.trim() || undefined,
+        difficulty,
+        enableWeb: Boolean(enableWeb || webUrl.trim()),
       });
+
+      if (genIntervalRef.current) clearInterval(genIntervalRef.current);
+      setGenProgress(100);
+      setGenStatusText('Quiz arena generated successfully!');
+      await new Promise((r) => setTimeout(r, 450));
 
       if (!deck?.questions || deck.questions.length === 0) {
         throw new Error('No quiz questions generated. Please try again.');
@@ -64,8 +118,9 @@ export function QuizPage({ initialDocId = 'syllabus' }) {
       setCurrentIndex(0);
       setUserAnswers({});
       setIsFinished(false);
-      addToast(`Generated ${deck.questions.length} question quiz!`, 'success');
+      addToast(`Generated ${deck.questions.length} question quiz arena!`, 'success');
     } catch (err) {
+      if (genIntervalRef.current) clearInterval(genIntervalRef.current);
       console.error('Quiz generation failed:', err);
       addToast(`Failed to generate quiz: ${err.message}`, 'error');
     } finally {
@@ -74,13 +129,11 @@ export function QuizPage({ initialDocId = 'syllabus' }) {
   };
 
   const handleSelectOption = (optionIndex) => {
-    // If already answered this question, do not allow changing
     if (userAnswers[currentIndex] !== undefined) return;
 
     const newAnswers = { ...userAnswers, [currentIndex]: optionIndex };
     setUserAnswers(newAnswers);
 
-    // If this was the last question, calculate score and launch confetti if good score
     if (Object.keys(newAnswers).length === quizDeck.questions.length) {
       const correctCount = quizDeck.questions.reduce((acc, q, idx) => {
         return newAnswers[idx] === q.correct_index ? acc + 1 : acc;
@@ -143,40 +196,218 @@ export function QuizPage({ initialDocId = 'syllabus' }) {
               onSelectDocId={setSelectedDocId}
             />
 
+            {/* Redesigned Question Count Selector: Presets + Stepper */}
             <div>
-              <label
-                style={{
-                  display: 'block',
-                  fontSize: '0.84rem',
-                  fontWeight: 600,
-                  color: 'var(--text-secondary)',
-                  marginBottom: '6px',
-                }}
-              >
-                Number of Questions: {questionCount}
-              </label>
-              <input
-                type="range"
-                min="1"
-                max="20"
-                value={questionCount}
-                onChange={(e) => setQuestionCount(Number(e.target.value))}
-                style={{ width: '100%', accentColor: 'var(--primary)', cursor: 'pointer' }}
-              />
               <div
                 style={{
                   display: 'flex',
+                  alignItems: 'center',
                   justifyContent: 'space-between',
+                  marginBottom: '8px',
+                }}
+              >
+                <label
+                  style={{
+                    fontSize: '0.84rem',
+                    fontWeight: 600,
+                    color: 'var(--text-secondary)',
+                  }}
+                >
+                  Number of Questions
+                </label>
+                <span
+                  style={{
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    padding: '2px 8px',
+                    borderRadius: '6px',
+                    background: 'rgba(99, 102, 241, 0.2)',
+                    color: '#818cf8',
+                    border: '1px solid rgba(99, 102, 241, 0.3)',
+                  }}
+                >
+                  {questionCount} {questionCount === 1 ? 'Question' : 'Questions'}
+                </span>
+              </div>
+
+              {/* Quick Preset Pills */}
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(5, 1fr)',
+                  gap: '6px',
+                  marginBottom: '10px',
+                }}
+              >
+                {[1, 5, 10, 15, 20].map((num) => {
+                  const isSelected = questionCount === num;
+                  return (
+                    <button
+                      key={num}
+                      type="button"
+                      onClick={() => setQuestionCount(num)}
+                      style={{
+                        padding: '6px 0',
+                        borderRadius: '8px',
+                        fontSize: '0.84rem',
+                        fontWeight: 600,
+                        textAlign: 'center',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                        border: isSelected
+                          ? '1.5px solid var(--primary)'
+                          : '1px solid var(--border-subtle)',
+                        background: isSelected
+                          ? 'rgba(99, 102, 241, 0.25)'
+                          : 'rgba(255, 255, 255, 0.03)',
+                        color: isSelected ? '#ffffff' : 'var(--text-secondary)',
+                      }}
+                    >
+                      {num}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Custom Stepper Controls */}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  background: 'rgba(255, 255, 255, 0.02)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: '10px',
+                  padding: '4px 6px',
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => setQuestionCount((c) => Math.max(1, c - 1))}
+                  disabled={questionCount <= 1}
+                  style={{
+                    width: '32px',
+                    height: '32px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-subtle)',
+                    background: 'rgba(255, 255, 255, 0.05)',
+                    color: questionCount <= 1 ? 'var(--text-muted)' : 'var(--text-primary)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: questionCount <= 1 ? 'not-allowed' : 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                  title="Decrease count"
+                >
+                  <Minus size={14} />
+                </button>
+
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <input
+                    type="number"
+                    min="1"
+                    max="20"
+                    value={questionCount}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value, 10);
+                      if (!isNaN(val)) {
+                        setQuestionCount(Math.min(20, Math.max(1, val)));
+                      }
+                    }}
+                    style={{
+                      width: '60px',
+                      textAlign: 'center',
+                      background: 'transparent',
+                      border: 'none',
+                      color: 'var(--text-primary)',
+                      fontSize: '1rem',
+                      fontWeight: 700,
+                      outline: 'none',
+                    }}
+                  />
+                  <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>/ 20 max</span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setQuestionCount((c) => Math.min(20, c + 1))}
+                  disabled={questionCount >= 20}
+                  style={{
+                    width: '32px',
+                    height: '32px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-subtle)',
+                    background: 'rgba(255, 255, 255, 0.05)',
+                    color: questionCount >= 20 ? 'var(--text-muted)' : 'var(--text-primary)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: questionCount >= 20 ? 'not-allowed' : 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                  title="Increase count"
+                >
+                  <Plus size={14} />
+                </button>
+              </div>
+            </div>
+
+            {/* Web URL (Fetch MCP Integration) */}
+            <div style={{ gridColumn: '1 / -1' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: '6px',
+                }}
+              >
+                <label
+                  style={{
+                    fontSize: '0.84rem',
+                    fontWeight: 600,
+                    color: 'var(--text-secondary)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}
+                >
+                  <Globe size={14} color="#38bdf8" />
+                  <span>Web Documentation URL (Fetch MCP Web Extraction — Optional)</span>
+                </label>
+                <span
+                  style={{
+                    fontSize: '0.72rem',
+                    background: 'rgba(56, 189, 248, 0.15)',
+                    color: '#38bdf8',
+                    padding: '2px 8px',
+                    borderRadius: '6px',
+                    fontWeight: 600,
+                  }}
+                >
+                  MCP Tool Enabled
+                </span>
+              </div>
+              <input
+                type="url"
+                value={webUrl}
+                onChange={(e) => setWebUrl(e.target.value)}
+                placeholder="https://en.wikipedia.org/wiki/Static_random-access_memory or official docs"
+                className="input"
+                style={{ width: '100%' }}
+              />
+              <p
+                style={{
                   fontSize: '0.75rem',
                   color: 'var(--text-muted)',
                   marginTop: '4px',
+                  lineHeight: 1.4,
                 }}
               >
-                <span>1 MCQ</span>
-                <span>5 MCQs</span>
-                <span>10 MCQs</span>
-                <span>20 MCQs</span>
-              </div>
+                When provided, Fetch MCP retrieves the live page, cleans boilerplate/navigation, and
+                grounds MCQs directly in the web article context.
+              </p>
             </div>
 
             <div style={{ gridColumn: '1 / -1' }}>
@@ -199,6 +430,148 @@ export function QuizPage({ initialDocId = 'syllabus' }) {
                 className="input"
               />
             </div>
+
+            <div style={{ gridColumn: '1 / -1' }}>
+              <label
+                style={{
+                  display: 'block',
+                  fontSize: '0.84rem',
+                  fontWeight: 600,
+                  color: 'var(--text-secondary)',
+                  marginBottom: '8px',
+                }}
+              >
+                Question Difficulty & Cognitive Depth:
+              </label>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                  gap: '10px',
+                }}
+              >
+                {[
+                  {
+                    id: 'beginner',
+                    label: 'Beginner',
+                    badge: 'Recall & Terms',
+                    desc: 'Direct definitions, syntax recognition, distinct choices',
+                  },
+                  {
+                    id: 'intermediate',
+                    label: 'Intermediate',
+                    badge: 'Reasoning & Debug',
+                    desc: 'Code tracing, operational trade-offs, common bug patterns',
+                  },
+                  {
+                    id: 'advanced',
+                    label: 'Advanced',
+                    badge: 'Edge Cases & Rigor',
+                    desc: 'Multi-step scenario analysis, failure modes, subtle traps',
+                  },
+                ].map((tier) => {
+                  const active = difficulty === tier.id;
+                  return (
+                    <button
+                      key={tier.id}
+                      type="button"
+                      onClick={() => setDifficulty(tier.id)}
+                      style={{
+                        padding: '12px 14px',
+                        borderRadius: '10px',
+                        border: active ? '1.5px solid var(--primary)' : '1px solid var(--border-subtle)',
+                        background: active ? 'rgba(99, 102, 241, 0.16)' : 'rgba(255, 255, 255, 0.02)',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        transition: 'all 0.2s ease',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '4px',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span
+                          style={{
+                            fontWeight: 700,
+                            fontSize: '0.92rem',
+                            color: active ? '#818cf8' : 'var(--text-primary)',
+                          }}
+                        >
+                          {tier.label}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: '0.7rem',
+                            padding: '2px 8px',
+                            borderRadius: '999px',
+                            background: active ? 'rgba(99, 102, 241, 0.3)' : 'rgba(255, 255, 255, 0.06)',
+                            color: active ? '#c7d2fe' : 'var(--text-muted)',
+                          }}
+                        >
+                          {tier.badge}
+                        </span>
+                      </div>
+                      <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.35 }}>
+                        {tier.desc}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Research Source Selector: Uploaded Documents vs Uploaded Documents + Fetch MCP */}
+            <div style={{ marginTop: '20px' }}>
+              <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.86rem', fontWeight: 600 }}>
+                Evidence & Knowledge Sources
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setEnableWeb(false)}
+                  style={{
+                    padding: '10px 14px',
+                    borderRadius: '10px',
+                    border: !enableWeb ? '1.5px solid var(--primary)' : '1px solid var(--border-subtle)',
+                    background: !enableWeb ? 'rgba(99, 102, 241, 0.16)' : 'rgba(255, 255, 255, 0.02)',
+                    color: !enableWeb ? '#ffffff' : 'var(--text-secondary)',
+                    cursor: 'pointer',
+                    fontSize: '0.84rem',
+                    fontWeight: 600,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    transition: 'all 0.18s ease',
+                  }}
+                >
+                  <span>📄</span>
+                  <span>Uploaded Documents Only</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEnableWeb(true)}
+                  style={{
+                    padding: '10px 14px',
+                    borderRadius: '10px',
+                    border: enableWeb ? '1.5px solid #3b82f6' : '1px solid var(--border-subtle)',
+                    background: enableWeb ? 'rgba(59, 130, 246, 0.2)' : 'rgba(255, 255, 255, 0.02)',
+                    color: enableWeb ? '#ffffff' : 'var(--text-secondary)',
+                    cursor: 'pointer',
+                    fontSize: '0.84rem',
+                    fontWeight: 600,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    transition: 'all 0.18s ease',
+                  }}
+                >
+                  <span>🌐</span>
+                  <span>Documents + Fetch MCP Web</span>
+                </button>
+              </div>
+            </div>
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
@@ -211,7 +584,7 @@ export function QuizPage({ initialDocId = 'syllabus' }) {
               {loading ? (
                 <>
                   <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
-                  <span>Generating MCQs...</span>
+                  <span>Generating MCQs ({genProgress}%)...</span>
                 </>
               ) : (
                 <>
@@ -224,297 +597,104 @@ export function QuizPage({ initialDocId = 'syllabus' }) {
         </form>
       )}
 
+      {/* Multi-Stage Loading Progress Bar Card */}
       {loading && (
-        <div className="glass-card" style={{ padding: '60px', textAlign: 'center' }}>
-          <Loader2 size={32} style={{ animation: 'spin 1s linear infinite', margin: '0 auto 16px' }} />
-          <h3 style={{ marginBottom: '8px' }}>Crafting Academic Questions & Explanations...</h3>
-          <p style={{ color: 'var(--text-muted)' }}>
-            Gemini is formulating 4 distinct options with pedagogical distractor rationales.
-          </p>
+        <div
+          className="glass-card"
+          style={{
+            padding: '36px 32px',
+            marginBottom: '32px',
+            border: '1px solid rgba(99, 102, 241, 0.3)',
+            background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.75) 0%, rgba(15, 23, 42, 0.9) 100%)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <Loader2 size={20} style={{ animation: 'spin 1.2s linear infinite', color: '#818cf8' }} />
+              <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: '#f8fafc' }}>
+                Synthesizing Question Deck
+              </h3>
+            </div>
+            <span
+              style={{
+                fontFamily: 'monospace',
+                fontSize: '0.92rem',
+                fontWeight: 700,
+                color: '#818cf8',
+                background: 'rgba(99, 102, 241, 0.15)',
+                padding: '3px 10px',
+                borderRadius: '6px',
+                border: '1px solid rgba(99, 102, 241, 0.3)',
+              }}
+            >
+              {genProgress}%
+            </span>
+          </div>
+
+          {/* Progress Track */}
+          <div
+            style={{
+              width: '100%',
+              height: '8px',
+              backgroundColor: 'rgba(255, 255, 255, 0.08)',
+              borderRadius: '999px',
+              overflow: 'hidden',
+              marginBottom: '14px',
+            }}
+          >
+            <div
+              style={{
+                width: `${genProgress}%`,
+                height: '100%',
+                background: 'linear-gradient(90deg, #6366f1 0%, #38bdf8 50%, #818cf8 100%)',
+                borderRadius: '999px',
+                transition: 'width 0.35s cubic-bezier(0.4, 0, 0.2, 1)',
+                boxShadow: '0 0 12px rgba(99, 102, 241, 0.5)',
+              }}
+            />
+          </div>
+
+          {/* Dynamic Status Text */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: '0.84rem', color: '#cbd5e1', fontWeight: 500 }}>
+              {genStatusText || 'Calibrating assessment depth...'}
+            </span>
+            <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+              {difficulty.charAt(0).toUpperCase() + difficulty.slice(1)} Tier • {questionCount} MCQs
+            </span>
+          </div>
         </div>
       )}
 
-      {/* Quiz Gameplay Card */}
+      {/* Quiz Gameplay: Deferred-Grading Exam Simulator */}
       {quizDeck && (
-        <div>
-          {/* Progress & Control Bar */}
-          <div
-            className="glass-card"
-            style={{
-              padding: '16px 22px',
-              marginBottom: '20px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              flexWrap: 'wrap',
-              gap: '12px',
-            }}
-          >
-            <div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                {quizDeck.title || 'Knowledge Assessment'}
-              </div>
-              <div style={{ fontWeight: 700, fontSize: '1.05rem' }}>
-                Question {currentIndex + 1} of {quizDeck.questions.length}
-              </div>
-            </div>
-
-            {/* Answered Counter */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div
-                className="badge badge-primary"
-                style={{ fontSize: '0.8rem', padding: '6px 12px' }}
-              >
-                Answered: {Object.keys(userAnswers).length}/{quizDeck.questions.length}
-              </div>
-
-              <button
-                onClick={() => {
-                  if (window.confirm('Reset current quiz?')) {
-                    setQuizDeck(null);
-                    setUserAnswers({});
-                    setIsFinished(false);
-                  }
-                }}
-                className="btn btn-ghost btn-sm"
-                title="New Quiz Setup"
-              >
-                <RotateCcw size={14} />
-                <span>Reset</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Active Question Box */}
-          {quizDeck.questions[currentIndex] && (
-            <div className="glass-card" style={{ padding: '32px', marginBottom: '20px' }}>
-              <h3
-                style={{
-                  fontSize: '1.2rem',
-                  lineHeight: 1.5,
-                  marginBottom: '24px',
-                  fontWeight: 600,
-                }}
-              >
-                {quizDeck.questions[currentIndex].question}
-              </h3>
-
-              {/* 4 Options Grid */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {quizDeck.questions[currentIndex].options.map((optionText, optIdx) => {
-                  const isSelected = userAnswers[currentIndex] === optIdx;
-                  const hasAnswered = userAnswers[currentIndex] !== undefined;
-                  const isCorrect = optIdx === quizDeck.questions[currentIndex].correct_index;
-
-                  let borderClr = 'var(--border-subtle)';
-                  let bgClr = 'rgba(255, 255, 255, 0.03)';
-                  let textClr = 'var(--text-primary)';
-
-                  if (hasAnswered) {
-                    if (isCorrect) {
-                      borderClr = 'var(--success)';
-                      bgClr = 'rgba(16, 185, 129, 0.15)';
-                      textClr = '#6ee7b7';
-                    } else if (isSelected) {
-                      borderClr = 'var(--error)';
-                      bgClr = 'rgba(239, 68, 68, 0.15)';
-                      textClr = '#fca5a5';
-                    }
-                  } else if (isSelected) {
-                    borderClr = 'var(--primary)';
-                    bgClr = 'rgba(99, 102, 241, 0.12)';
-                  }
-
-                  return (
-                    <button
-                      key={optIdx}
-                      type="button"
-                      onClick={() => handleSelectOption(optIdx)}
-                      disabled={hasAnswered}
-                      style={{
-                        padding: '16px 20px',
-                        background: bgClr,
-                        border: `1px solid ${borderClr}`,
-                        borderRadius: 'var(--radius-md)',
-                        textAlign: 'left',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '14px',
-                        cursor: hasAnswered ? 'default' : 'pointer',
-                        transition: 'all 0.2s ease',
-                      }}
-                    >
-                      <span
-                        style={{
-                          width: '32px',
-                          height: '32px',
-                          borderRadius: 'var(--radius-sm)',
-                          background: isSelected || (hasAnswered && isCorrect)
-                            ? 'rgba(255, 255, 255, 0.12)'
-                            : 'rgba(255, 255, 255, 0.05)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontWeight: 700,
-                          fontSize: '0.88rem',
-                          color: textClr,
-                          flexShrink: 0,
-                        }}
-                      >
-                        {optionLabels[optIdx]}
-                      </span>
-
-                      <span style={{ flex: 1, fontSize: '0.96rem', color: textClr }}>
-                        {optionText}
-                      </span>
-
-                      {hasAnswered && isCorrect && (
-                        <CheckCircle2 size={20} color="var(--success)" />
-                      )}
-                      {hasAnswered && isSelected && !isCorrect && (
-                        <XCircle size={20} color="var(--error)" />
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Explanation Card upon Answer */}
-              {userAnswers[currentIndex] !== undefined && (
-                <div
-                  style={{
-                    marginTop: '24px',
-                    padding: '18px 22px',
-                    background: 'rgba(99, 102, 241, 0.08)',
-                    borderRadius: 'var(--radius-md)',
-                    border: '1px solid var(--border-accent)',
-                    animation: 'fadeIn 0.3s ease',
-                  }}
-                >
-                  <div
-                    style={{
-                      fontWeight: 700,
-                      fontSize: '0.88rem',
-                      color: '#a5b4fc',
-                      marginBottom: '6px',
-                    }}
-                  >
-                    Explanation:
-                  </div>
-                  <p style={{ fontSize: '0.94rem', lineHeight: 1.6, color: 'var(--text-primary)' }}>
-                    {quizDeck.questions[currentIndex].explanation}
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Navigation Controls */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ marginTop: '16px' }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '16px' }}>
             <button
-              onClick={() => setCurrentIndex((prev) => Math.max(0, prev - 1))}
-              disabled={currentIndex === 0}
+              onClick={() => {
+                if (window.confirm('Leave current exam and return to quiz setup?')) {
+                  setQuizDeck(null);
+                }
+              }}
               className="btn btn-secondary btn-sm"
+              style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
             >
-              <ChevronLeft size={16} />
-              <span>Previous</span>
+              <RotateCcw size={14} />
+              <span>New Exam Setup</span>
             </button>
-
-            {currentIndex < quizDeck.questions.length - 1 ? (
-              <button
-                onClick={() => setCurrentIndex((prev) => prev + 1)}
-                className="btn btn-primary btn-sm"
-              >
-                <span>Next Question</span>
-                <ChevronRight size={16} />
-              </button>
-            ) : (
-              <button
-                onClick={() => setIsFinished(true)}
-                className="btn btn-primary btn-sm"
-              >
-                <span>View Final Score</span>
-                <Trophy size={16} />
-              </button>
-            )}
           </div>
-
-          {/* Finished Score Report Modal */}
-          {isFinished && (
-            <div className="modal-overlay" onClick={() => setIsFinished(false)}>
-              <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-                <div style={{ textAlign: 'center', padding: '10px 0' }}>
-                  <div
-                    style={{
-                      width: '64px',
-                      height: '64px',
-                      borderRadius: 'var(--radius-full)',
-                      background: 'linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      margin: '0 auto 16px auto',
-                      color: '#ffffff',
-                      boxShadow: '0 0 24px var(--primary-glow)',
-                    }}
-                  >
-                    <Trophy size={32} />
-                  </div>
-
-                  <h2 style={{ marginBottom: '8px' }}>Quiz Completed!</h2>
-                  <p style={{ color: 'var(--text-muted)', marginBottom: '24px' }}>
-                    {quizDeck.title || 'Academic Concept Review'}
-                  </p>
-
-                  {(() => {
-                    const { correct, total, percent } = calculateScore();
-                    return (
-                      <div
-                        style={{
-                          background: 'rgba(255, 255, 255, 0.04)',
-                          borderRadius: 'var(--radius-lg)',
-                          padding: '24px',
-                          marginBottom: '24px',
-                        }}
-                      >
-                        <div style={{ fontSize: '3rem', fontWeight: 800, color: 'var(--cyan)' }}>
-                          {percent}%
-                        </div>
-                        <div style={{ fontSize: '1rem', color: 'var(--text-secondary)' }}>
-                          You got <strong>{correct}</strong> out of <strong>{total}</strong> correct
-                        </div>
-                      </div>
-                    );
-                  })()}
-
-                  <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
-                    <button
-                      onClick={() => {
-                        setUserAnswers({});
-                        setCurrentIndex(0);
-                        setIsFinished(false);
-                      }}
-                      className="btn btn-secondary"
-                    >
-                      <RotateCcw size={15} />
-                      <span>Retake Quiz</span>
-                    </button>
-                    <button
-                      onClick={() => {
-                        setQuizDeck(null);
-                        setUserAnswers({});
-                        setIsFinished(false);
-                      }}
-                      className="btn btn-primary"
-                    >
-                      <span>New Quiz</span>
-                      <ArrowRight size={15} />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
+          <MCQArena
+            questions={quizDeck.questions.map((q) => ({
+              question: q.question,
+              options: q.options,
+              correct_answer:
+                q.correct_answer ||
+                (typeof q.correct_index === 'number' && q.options && q.options[q.correct_index]) ||
+                '',
+              explanation: q.explanation || '',
+            }))}
+            topic={focusTopic.trim() || quizDeck.title || 'MCQ Knowledge Assessment'}
+          />
         </div>
       )}
     </div>

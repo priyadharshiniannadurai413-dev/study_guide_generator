@@ -21,9 +21,14 @@ Your ONLY job is to classify the user's query into exactly ONE of these four cat
    or question papers from academic material.
 
 4. **direct_answer** — General knowledge questions, greetings, casual conversation, 
-   or questions that do NOT require searching any academic document database. 
+   or questions that do NOT require searching any academic document database or GitHub. 
    Examples: "What is the capital of India?", "Hello", "Explain TCP/IP protocol", 
    "Who invented the transistor?"
+
+5. **github** — Requests to check, inspect, or search GitHub repositories, read project code files,
+   review recent commits, or analyze student programming projects linked via GitHub.
+   Examples: "Check my repository", "List my GitHub repos", "Show recent commits in my repo",
+   "Read README.md from user/repo", "Review my code on GitHub".
 
 Respond with ONLY the category name — no explanation, no punctuation, no extra text.
 """

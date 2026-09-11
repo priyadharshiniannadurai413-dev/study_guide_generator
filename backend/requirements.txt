@@ -28,6 +28,7 @@ langchain-mistralai
 langchain-groq
 langchain-text-splitters
 langchain-tavily
+langchain-mcp-adapters
 
 # LangGraph (Multi-Agent Orchestration)
 langgraph
@@ -37,6 +38,7 @@ pypdf
 pdfplumber
 reportlab>=4.0.0
 python-docx>=1.1.0
+html2text
 
 # Voice & Speech
 edge-tts

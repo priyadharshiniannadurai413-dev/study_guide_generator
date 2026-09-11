@@ -39,6 +39,10 @@ async def github_login(
         default=True,
         description="Whether to return a 307 redirect directly to GitHub or a JSON payload with authorize_url",
     ),
+    redirect_uri: Optional[str] = Query(
+        default=None,
+        description="Optional custom callback redirect URI for OAuth",
+    ),
     current_user: dict = Depends(get_current_user),
 ):
     """
@@ -46,7 +50,7 @@ async def github_login(
     Requires authenticated Clerk user.
     """
     user_id = current_user["sub"]
-    authorize_url = github_oauth.generate_github_auth_url(user_id)
+    authorize_url = github_oauth.generate_github_auth_url(user_id, redirect_uri=redirect_uri)
 
     if redirect:
         return RedirectResponse(

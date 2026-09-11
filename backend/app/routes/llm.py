@@ -67,6 +67,52 @@ async def chat_stream(
     )
 
 
+class DirectMessageRequest(BaseModel):
+    message: Optional[str] = Field(default=None, description="Query prompt from client")
+    user_prompt: Optional[str] = Field(default=None, description="Alias for message")
+    doc_id: str = Field(default="syllabus", description="Document scope")
+    route: Optional[str] = Field(default=None, description="Explicit route target e.g. 'github'")
+    enable_web: bool = Field(default=False, description="Enable Fetch MCP web enrichment")
+
+
+@router.post("/api/chat/message")
+@router.post("/chat/message")
+async def chat_message(
+    request: DirectMessageRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Direct synchronous message execution endpoint for the GitHub Workbench and API clients.
+    """
+    query = (request.message or request.user_prompt or "").strip()
+    if not query:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Message cannot be empty.",
+        )
+
+    user_id = current_user.get("sub", "anonymous")
+    chat_service = get_chat_service()
+    result = await chat_service.invoke(
+        user_prompt=query,
+        user_id=user_id,
+        doc_id=request.doc_id,
+        route=request.route,
+        enable_web=request.enable_web,
+    )
+
+    final_resp = result.get("final_response") or "Operation completed."
+    return {
+        "response": final_resp,
+        "text": final_resp,
+        "route": result.get("route"),
+        "sources": {
+            "rag": [request.doc_id],
+            "web": result.get("web_sources", []),
+        },
+    }
+
+
 @router.post("/chatbot")
 async def chatbot(request: ChatRequest):
     """Legacy backward-compatible health/echo endpoint."""

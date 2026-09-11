@@ -18,7 +18,7 @@ from app.ai.agents.supervisor.prompt import ROUTER_SYSTEM_PROMPT
 logger = logging.getLogger("uvicorn")
 
 # Valid route values
-VALID_ROUTES = {"curriculum", "study_notes", "mcq", "direct_answer"}
+VALID_ROUTES = {"curriculum", "study_notes", "mcq", "direct_answer", "github"}
 
 
 async def router_node(state: SupervisorState) -> dict:
@@ -93,6 +93,10 @@ async def router_node(state: SupervisorState) -> dict:
     if any(k in query_lower for k in ["mcq", "quiz", "multiple choice", "questions for", "practice questions"]):
         logger.info("[Router] Keyword heuristic → mcq")
         return {"route": "mcq"}
+
+    if any(k in query_lower for k in ["github", "git repo", "my repo", "repository", "repositories", "recent commit", "commits", "pull request"]):
+        logger.info("[Router] Keyword heuristic → github")
+        return {"route": "github"}
 
     doc_id = state.get("doc_id", "")
     if doc_id and doc_id != "syllabus":

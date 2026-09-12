@@ -1,9 +1,18 @@
+import os
 from typing import Optional
 from dotenv import load_dotenv
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-load_dotenv()
+# Find .env in backend directory or parent directories
+_current_dir = os.path.dirname(os.path.abspath(__file__))  # app/core
+_backend_dir = os.path.dirname(os.path.dirname(_current_dir))  # backend
+_env_path = os.path.join(_backend_dir, ".env")
+
+if os.path.exists(_env_path):
+    load_dotenv(_env_path)
+else:
+    load_dotenv()
 
 
 class Settings(BaseSettings):
@@ -21,6 +30,16 @@ class Settings(BaseSettings):
     MISTRAL_API_KEY: Optional[str] = None
     TAVILY_API_KEY: Optional[str] = None
     GROQ_API_KEY: Optional[str] = None
+
+    # LangSmith & LangChain Tracing
+    LANGCHAIN_TRACING_V2: bool = False
+    LANGCHAIN_ENDPOINT: str = "https://api.smith.langchain.com"
+    LANGCHAIN_API_KEY: Optional[str] = None
+    LANGCHAIN_PROJECT: str = "study-guide-generator"
+    LANGSMITH_API_KEY: Optional[str] = None
+    LANGSMITH_PROJECT: Optional[str] = "study-guide-generator"
+    LANGSMITH_TRACING: bool = False
+
 
     # MongoDB Configuration
     MONGODB_URL: Optional[str] = None
@@ -53,7 +72,7 @@ class Settings(BaseSettings):
     EMBEDDING_BATCH_SIZE: int = 64
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=_env_path if os.path.exists(_env_path) else ".env",
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -72,7 +91,28 @@ class Settings(BaseSettings):
             if frontend_clean:
                 self.GITHUB_OAUTH_REDIRECT_URI = f"{frontend_clean}/github/callback"
 
+        # Sync LangSmith & LangChain settings to os.environ for runtime tracing
+        tracing_enabled = (
+            self.LANGCHAIN_TRACING_V2
+            or self.LANGSMITH_TRACING
+            or os.environ.get("LANGCHAIN_TRACING_V2", "").lower() in ("true", "1")
+            or os.environ.get("LANGSMITH_TRACING", "").lower() in ("true", "1")
+        )
+        api_key = self.LANGCHAIN_API_KEY or self.LANGSMITH_API_KEY or os.environ.get("LANGCHAIN_API_KEY") or os.environ.get("LANGSMITH_API_KEY")
+        if tracing_enabled and api_key:
+            os.environ["LANGCHAIN_TRACING_V2"] = "true"
+            os.environ["LANGSMITH_TRACING"] = "true"
+            os.environ["LANGCHAIN_API_KEY"] = api_key
+            os.environ["LANGSMITH_API_KEY"] = api_key
+            if self.LANGCHAIN_ENDPOINT:
+                os.environ["LANGCHAIN_ENDPOINT"] = self.LANGCHAIN_ENDPOINT
+            project = self.LANGCHAIN_PROJECT or self.LANGSMITH_PROJECT or os.environ.get("LANGCHAIN_PROJECT") or "study-guide-generator"
+            os.environ["LANGCHAIN_PROJECT"] = project
+            os.environ["LANGSMITH_PROJECT"] = project
+
+
         return self
 
 
 settings = Settings()
+

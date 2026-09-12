@@ -11,11 +11,14 @@ import logging
 import math
 from typing import Any, Dict, List
 
+from langsmith import traceable
+
 from app.db.mongodb import get_user_doc_collection
 from app.rag.embedding import embed_query
 from app.rag.loader import is_front_matter
 
 logger = logging.getLogger("uvicorn")
+
 
 
 def _cosine_similarity(vec_a: List[float], vec_b: List[float]) -> float:
@@ -171,12 +174,14 @@ async def _in_memory_similarity_search(
     return scored_chunks[:top_k]
 
 
+@traceable(name="RAG:UserDocRetrieval", run_type="retriever")
 async def get_user_doc_context(
     user_id: str,
     doc_id: str,
     query: str,
     top_k: int = 8,
 ) -> List[Dict[str, Any]]:
+
     """
     Retrieve relevant chunks from a user's uploaded document.
     If query is generic or embedding fails, smoothly falls back to direct

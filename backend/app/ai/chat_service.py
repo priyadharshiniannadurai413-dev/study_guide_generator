@@ -80,7 +80,20 @@ class ChatService:
             f"doc_id={doc_id}, query={user_prompt[:80]}..."
         )
 
-        result = await self._graph.ainvoke(initial_state)
+        # Prepare LangSmith tracing configuration with explicit run_name, tags, and metadata
+        config = {
+            "run_name": f"StudySync-Chat:{doc_id}",
+            "tags": ["frontend_chat", f"user:{user_id}", f"doc:{doc_id}"],
+            "metadata": {
+                "user_id": user_id,
+                "doc_id": doc_id,
+                "route": route or "auto",
+                "enable_web": enable_web,
+                "query_snippet": user_prompt[:100],
+            },
+        }
+
+        result = await self._graph.ainvoke(initial_state, config=config)
 
         logger.info(
             f"[ChatService] Graph completed — route={result.get('route')}, "
@@ -88,6 +101,7 @@ class ChatService:
         )
 
         return result
+
 
     async def stream_tokens(
         self,

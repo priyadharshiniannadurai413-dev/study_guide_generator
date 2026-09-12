@@ -29,6 +29,8 @@ langchain-groq
 langchain-text-splitters
 langchain-tavily
 langchain-mcp-adapters
+langsmith
+
 
 # LangGraph (Multi-Agent Orchestration)
 langgraph

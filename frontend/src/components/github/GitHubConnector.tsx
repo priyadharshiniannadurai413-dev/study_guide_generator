@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { CheckCircle2, XCircle, Key, Loader2, Unlink } from 'lucide-react';
 import { useAuth } from '@clerk/clerk-react';
-import { getStoredToken } from '../../api/client';
+import { getStoredToken, API_BASE } from '../../api/client';
 
 function GitHubIcon({ size = 20, color = 'currentColor' }: { size?: number; color?: string }) {
   return (
@@ -43,7 +43,7 @@ export const GitHubConnector: React.FC = () => {
     try {
       setLoading(true);
       const token = await getAuthToken();
-      const res = await fetch('/api/integrations/status', {
+      const res = await fetch(`${API_BASE}/api/integrations/status`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {
@@ -69,7 +69,7 @@ export const GitHubConnector: React.FC = () => {
       setSaving(true);
       setStatusMsg(null);
       const token = await getAuthToken();
-      const res = await fetch('/api/integrations/github', {
+      const res = await fetch(`${API_BASE}/api/integrations/github`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -101,7 +101,7 @@ export const GitHubConnector: React.FC = () => {
       setSaving(true);
       setStatusMsg(null);
       const token = await getAuthToken();
-      const res = await fetch('/api/integrations/github', {
+      const res = await fetch(`${API_BASE}/api/integrations/github`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` }
       });

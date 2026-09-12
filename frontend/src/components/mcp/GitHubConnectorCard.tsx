@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { CheckCircle2, XCircle, Key, Loader2, Unlink, ExternalLink } from 'lucide-react';
 import { useAuth } from '@clerk/clerk-react';
-
-const API_BASE = (import.meta as any).env?.VITE_API_URL || '';
+import { API_BASE } from '../../api/client';
 
 function GitHubIcon({ size = 22, color = '#ffffff' }: { size?: number; color?: string }) {
   return (

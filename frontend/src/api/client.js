@@ -7,6 +7,8 @@
 const TOKEN_KEY = 'ai_study_assistant_auth_token';
 const DEV_USER_ID_KEY = 'ai_study_assistant_dev_user';
 
+export const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
+
 let dynamicTokenProvider = null;
 
 export const setTokenProvider = (provider) => {
@@ -95,7 +97,8 @@ export async function apiRequest(endpoint, options = {}, isRetry = false) {
     ...options.headers,
   };
 
-  const response = await fetch(endpoint, {
+  const url = endpoint.startsWith('http') ? endpoint : `${API_BASE}${endpoint}`;
+  const response = await fetch(url, {
     ...options,
     headers,
   });
@@ -172,7 +175,7 @@ export async function streamChatResponse({
   };
 
   try {
-    const response = await fetch('/api/chat/stream', {
+    const response = await fetch(`${API_BASE}/api/chat/stream`, {
       method: 'POST',
       headers,
       body: JSON.stringify({

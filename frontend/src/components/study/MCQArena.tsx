@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { CheckCircle2, XCircle, Download, FileText, ArrowRight, ArrowLeft, RotateCcw } from 'lucide-react';
 import { useAuth } from '@clerk/clerk-react';
-import { getEffectiveToken } from '../../api/client';
+import { getEffectiveToken, API_BASE } from '../../api/client';
 
 export interface MCQItem {
   question: string;
@@ -83,7 +83,7 @@ export const MCQArena: React.FC<Props> = ({ questions, topic, onRetake }) => {
         token = await getEffectiveToken();
       }
 
-      const res = await fetch('/api/study/export-pack/pdf', {
+      const res = await fetch(`${API_BASE}/api/study/export-pack/pdf`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

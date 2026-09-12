@@ -4,7 +4,7 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { Download, FileText, Loader2, BookOpen, Globe, ExternalLink } from 'lucide-react';
 import { useAuth } from '@clerk/clerk-react';
-import { getEffectiveToken } from '../../api/client';
+import { getEffectiveToken, API_BASE } from '../../api/client';
 
 export interface StudySection {
   title: string;
@@ -90,8 +90,7 @@ export const StudyDocumentViewer: React.FC<Props> = ({ notes, topic, docId }) =>
         ...(docId ? { doc_id: docId } : {}),
       });
 
-      const apiUrl = import.meta.env.VITE_API_URL || '';
-      const endpointUrl = `${apiUrl}/api/study/export-notes?${params.toString()}`;
+      const endpointUrl = `${API_BASE}/api/study/export-notes?${params.toString()}`;
 
       const res = await fetch(endpointUrl, {
         headers: {

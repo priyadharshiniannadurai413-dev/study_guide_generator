@@ -3,7 +3,7 @@
  * High-level API endpoints communicating with FastAPI backend.
  */
 
-import { apiRequest, getEffectiveToken } from './client';
+import { apiRequest, getEffectiveToken, API_BASE } from './client';
 
 export const endpoints = {
   // Health check
@@ -23,7 +23,7 @@ export const endpoints = {
       const formData = new FormData();
       formData.append('file', file);
 
-      xhr.open('POST', '/api/documents/upload');
+      xhr.open('POST', `${API_BASE}/api/documents/upload`);
 
       if (token) {
         xhr.setRequestHeader('Authorization', `Bearer ${token}`);

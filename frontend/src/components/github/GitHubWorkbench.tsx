@@ -3,7 +3,7 @@ import { FolderGit2, Search, Code, FileText, Loader2, RefreshCw, AlertCircle } f
 import { useAuth } from '@clerk/clerk-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { getStoredToken } from '../../api/client';
+import { getStoredToken, API_BASE } from '../../api/client';
 
 export const GitHubWorkbench: React.FC = () => {
   const { getToken } = useAuth();
@@ -43,7 +43,7 @@ export const GitHubWorkbench: React.FC = () => {
         queryPrompt = `Perform a comprehensive academic code review on '${pathStr}' in repository '${repoQuery.trim()}'. Analyze bugs, explain key functions, suggest refactoring, and assess algorithmic complexity.`;
       }
 
-      const res = await fetch('/api/chat/message', {
+      const res = await fetch(`${API_BASE}/api/chat/message`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 import os
 
@@ -7,8 +8,11 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.core.config import settings
 from app.routes import documents, github_auth, integrations, llm, study, voice
 from app.db.mongodb import connect_to_mongo, close_mongo_connection
+
+logger = logging.getLogger("uvicorn")
 
 
 @asynccontextmanager
@@ -18,6 +22,14 @@ async def lifespan(app: FastAPI):
     """
     # Startup
     await connect_to_mongo()
+
+    tracing_active = (
+        os.environ.get("LANGSMITH_TRACING", "").lower() in ("true", "1")
+        or os.environ.get("LANGCHAIN_TRACING_V2", "").lower() in ("true", "1")
+    )
+    project = os.environ.get("LANGSMITH_PROJECT") or os.environ.get("LANGCHAIN_PROJECT") or "study-guide-generator"
+    logger.info(f"[LangSmith] Tracing active: {tracing_active} | Project: {project}")
+
 
     yield
 
@@ -94,12 +106,21 @@ def landing_page():
 @app.get("/health")
 def health_check():
     """
-    Health check endpoint.
+    Health check endpoint exposing service and LangSmith tracing state.
     """
+    tracing_active = (
+        os.environ.get("LANGSMITH_TRACING", "").lower() in ("true", "1")
+        or os.environ.get("LANGCHAIN_TRACING_V2", "").lower() in ("true", "1")
+    )
+    project = os.environ.get("LANGSMITH_PROJECT") or os.environ.get("LANGCHAIN_PROJECT") or "study-guide-generator"
     return {
         "status": "ok",
-        "service": "ai-study-assistant"
+        "service": "ai-study-assistant",
+        "langsmith_tracing": tracing_active,
+        "langsmith_project": project,
     }
+
+
 
 
 from app.routes.integrations import router as integrations_router

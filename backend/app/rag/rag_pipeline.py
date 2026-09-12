@@ -8,6 +8,8 @@ vector and keyword indexes, fuses ranks via RRF, and formats citation prompts.
 import logging
 from typing import Any, Dict, List
 
+from langsmith import traceable
+
 from app.rag.config import (
     HYBRID_FINAL_TOP_K,
     HYBRID_KEYWORD_TOP_K,
@@ -26,10 +28,12 @@ from app.rag.vector_store import (
 logger = logging.getLogger("uvicorn")
 
 
+@traceable(name="RAG:SyllabusRetrieval", run_type="retriever")
 async def run_rag_query(
     query: str,
     top_k: int = HYBRID_FINAL_TOP_K,
 ) -> Dict[str, Any]:
+
     """
     Execute full standalone RAG retrieval:
       1. Normalize query & extract semester

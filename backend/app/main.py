@@ -73,17 +73,25 @@ async def validation_exception_handler(
 _allowed_origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "https://study-guide-generator-teal.vercel.app",
+
 ]
 
-_frontend_url = os.getenv("FRONTEND_URL", "").strip().rstrip("/")
-if _frontend_url and _frontend_url not in _allowed_origins:
-    _allowed_origins.append(_frontend_url)
+_frontend_env = os.getenv("FRONTEND_URL", "").strip()
+if _frontend_env:
+    for url in _frontend_env.split(","):
+        clean_url = url.strip().rstrip("/")
+        if clean_url and clean_url not in _allowed_origins:
+            _allowed_origins.append(clean_url)
 
 
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins,
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

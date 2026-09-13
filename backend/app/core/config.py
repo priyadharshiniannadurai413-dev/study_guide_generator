@@ -48,7 +48,9 @@ class Settings(BaseSettings):
 
     # GitHub OAuth & Legacy PAT
     GITHUB_API_KEY: Optional[str] = None  # Legacy PAT (optional)
+    GITHUB_CLIENT_ID: Optional[str] = None  # Standard OAuth alias
     GITHUB_OAUTH_CLIENT_ID: Optional[str] = None
+    GITHUB_CLIENT_SECRET: Optional[str] = None  # Standard OAuth alias
     GITHUB_OAUTH_CLIENT_SECRET: Optional[str] = None
     GITHUB_OAUTH_REDIRECT_URI: Optional[str] = None
     GITHUB_REDIRECT_URI: Optional[str] = None  # Alias for GITHUB_OAUTH_REDIRECT_URI
@@ -82,6 +84,17 @@ class Settings(BaseSettings):
         # Resolve MONGODB_URL from MONGODB_URI fallback if needed
         if not self.MONGODB_URL and self.MONGODB_URI:
             self.MONGODB_URL = self.MONGODB_URI
+
+        # Resolve GitHub OAuth Client ID and Secret aliases
+        if not self.GITHUB_OAUTH_CLIENT_ID and self.GITHUB_CLIENT_ID:
+            self.GITHUB_OAUTH_CLIENT_ID = self.GITHUB_CLIENT_ID
+        elif not self.GITHUB_CLIENT_ID and self.GITHUB_OAUTH_CLIENT_ID:
+            self.GITHUB_CLIENT_ID = self.GITHUB_OAUTH_CLIENT_ID
+
+        if not self.GITHUB_OAUTH_CLIENT_SECRET and self.GITHUB_CLIENT_SECRET:
+            self.GITHUB_OAUTH_CLIENT_SECRET = self.GITHUB_CLIENT_SECRET
+        elif not self.GITHUB_CLIENT_SECRET and self.GITHUB_OAUTH_CLIENT_SECRET:
+            self.GITHUB_CLIENT_SECRET = self.GITHUB_OAUTH_CLIENT_SECRET
 
         # Resolve production redirect URI if running on Render
         render_url = (os.environ.get("RENDER_EXTERNAL_URL") or "").strip().rstrip("/")

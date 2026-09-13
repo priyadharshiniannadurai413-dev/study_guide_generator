@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { CheckCircle2, XCircle, Key, Loader2, Unlink, ExternalLink } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader2, Unlink, ExternalLink, ShieldCheck } from 'lucide-react';
 import { useAuth } from '@clerk/clerk-react';
 import { API_BASE, getEffectiveToken } from '../../api/client';
 
@@ -14,25 +14,46 @@ function GitHubIcon({ size = 22, color = '#ffffff' }: { size?: number; color?: s
 
 export const GitHubConnectorCard: React.FC = () => {
   const { getToken } = useAuth();
-  const [pat, setPat] = useState('');
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [githubLogin, setGithubLogin] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(true);
-  const [saving, setSaving] = useState<boolean>(false);
+  const [connecting, setConnecting] = useState<boolean>(false);
+  const [disconnecting, setDisconnecting] = useState<boolean>(false);
+
+  const getAuthToken = async (): Promise<string> => {
+    try {
+      const clerkToken = await getToken();
+      if (clerkToken) return clerkToken;
+    } catch {
+      // Fallback
+    }
+    return await getEffectiveToken();
+  };
 
   const checkStatus = async () => {
     try {
       setLoading(true);
-      const token = await getEffectiveToken();
-      const res = await fetch(`${API_BASE}/api/integrations/status`, {
+      const token = await getAuthToken();
+      const res = await fetch(`${API_BASE}/auth/github/status`, {
         headers: {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
       });
       if (res.ok) {
         const data = await res.json();
-        setIsConnected(Boolean(data.github_connected));
+        setIsConnected(Boolean(data.connected ?? data.github_connected));
         setGithubLogin(data.github_login || '');
+      } else {
+        const fallbackRes = await fetch(`${API_BASE}/api/integrations/status`, {
+          headers: {
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+        });
+        if (fallbackRes.ok) {
+          const data = await fallbackRes.json();
+          setIsConnected(Boolean(data.github_connected));
+          setGithubLogin(data.github_login || '');
+        }
       }
     } catch (err) {
       console.error('Failed to fetch GitHub status', err);
@@ -43,45 +64,59 @@ export const GitHubConnectorCard: React.FC = () => {
 
   useEffect(() => {
     checkStatus();
+
+    const handleOAuthMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'GITHUB_AUTH_SUCCESS') {
+        const login = event.data.login || '';
+        setIsConnected(true);
+        setGithubLogin(login);
+        checkStatus();
+      }
+    };
+
+    window.addEventListener('message', handleOAuthMessage);
+    return () => window.removeEventListener('message', handleOAuthMessage);
   }, []);
 
-  const handleConnect = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!pat.trim()) return;
+  const handleOAuthConnect = async () => {
     try {
-      setSaving(true);
-      const token = await getToken();
-      const res = await fetch(`${API_BASE}/api/integrations/github`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ github_pat: pat.trim() }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setIsConnected(true);
-        setGithubLogin(data.github_login || '');
-        setPat('');
-      } else {
-        const errData = await res.json().catch(() => ({}));
-        alert(errData.detail || 'Invalid GitHub Token or connection failed.');
+      setConnecting(true);
+      const token = await getAuthToken();
+      if (!token) {
+        alert('Please log in first.');
+        return;
       }
-    } catch (err) {
+
+      const loginUrl = `${API_BASE}/auth/github/login?token=${encodeURIComponent(token)}&return_to=${encodeURIComponent(window.location.href)}`;
+
+      const width = 600;
+      const height = 700;
+      const left = window.screenX + (window.outerWidth - width) / 2;
+      const top = window.screenY + (window.outerHeight - height) / 2;
+      const popup = window.open(
+        loginUrl,
+        'github_oauth',
+        `width=${width},height=${height},left=${left},top=${top},menubar=no,toolbar=no,status=no`
+      );
+
+      if (!popup || popup.closed || typeof popup.closed === 'undefined') {
+        window.location.href = loginUrl;
+      }
+    } catch (err: any) {
       console.error('Connection error', err);
-      alert('Connection error occurred while contacting backend.');
+      alert('Error launching GitHub authorization.');
     } finally {
-      setSaving(false);
+      setConnecting(false);
     }
   };
 
   const handleDisconnect = async () => {
+    if (!window.confirm('Disconnect your GitHub MCP integration?')) return;
     try {
-      setSaving(true);
-      const token = await getToken();
-      const res = await fetch(`${API_BASE}/api/integrations/github`, {
-        method: 'DELETE',
+      setDisconnecting(true);
+      const token = await getAuthToken();
+      const res = await fetch(`${API_BASE}/auth/github/disconnect`, {
+        method: 'POST',
         headers: {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
@@ -89,11 +124,20 @@ export const GitHubConnectorCard: React.FC = () => {
       if (res.ok) {
         setIsConnected(false);
         setGithubLogin('');
+      } else {
+        await fetch(`${API_BASE}/api/integrations/github`, {
+          method: 'DELETE',
+          headers: {
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+        });
+        setIsConnected(false);
+        setGithubLogin('');
       }
     } catch (err) {
       console.error('Disconnect error', err);
     } finally {
-      setSaving(false);
+      setDisconnecting(false);
     }
   };
 
@@ -197,17 +241,20 @@ export const GitHubConnectorCard: React.FC = () => {
               border: '1px solid rgba(51, 65, 85, 0.5)',
               display: 'flex',
               flexDirection: 'column',
-              gap: '8px',
+              gap: '10px',
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#cbd5e1' }}>
-                Encrypted Token Active {githubLogin ? `(@${githubLogin})` : ''}
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <ShieldCheck size={16} color="#34d399" />
+                <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#cbd5e1' }}>
+                  OAuth Token Active {githubLogin ? `(@${githubLogin})` : ''}
+                </span>
+              </div>
               <button
                 type="button"
                 onClick={handleDisconnect}
-                disabled={saving}
+                disabled={disconnecting}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -217,13 +264,14 @@ export const GitHubConnectorCard: React.FC = () => {
                   color: '#f87171',
                   background: 'transparent',
                   border: 'none',
-                  cursor: 'pointer',
+                  cursor: disconnecting ? 'not-allowed' : 'pointer',
                   padding: '4px 8px',
                   borderRadius: '6px',
                   transition: 'background 0.2s',
                 }}
               >
-                <Unlink size={14} /> Disconnect
+                {disconnecting ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Unlink size={14} />}
+                {disconnecting ? 'Disconnecting...' : 'Disconnect'}
               </button>
             </div>
             <p style={{ margin: 0, fontSize: '0.72rem', color: '#64748b' }}>
@@ -231,91 +279,50 @@ export const GitHubConnectorCard: React.FC = () => {
             </p>
           </div>
         ) : (
-          <form onSubmit={handleConnect} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <div>
-              <label
-                style={{
-                  display: 'block',
-                  fontSize: '0.78rem',
-                  fontWeight: 600,
-                  color: '#cbd5e1',
-                  marginBottom: '6px',
-                }}
-              >
-                Personal Access Token (PAT)
-              </label>
-              <div style={{ position: 'relative' }}>
-                <Key
-                  size={16}
-                  style={{
-                    position: 'absolute',
-                    left: '12px',
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    color: '#64748b',
-                  }}
-                />
-                <input
-                  type="password"
-                  value={pat}
-                  onChange={(e) => setPat(e.target.value)}
-                  placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px 10px 36px',
-                    background: 'rgba(2, 6, 23, 0.8)',
-                    border: '1px solid rgba(51, 65, 85, 0.8)',
-                    borderRadius: '8px',
-                    fontSize: '0.8rem',
-                    color: '#f8fafc',
-                    boxSizing: 'border-box',
-                    outline: 'none',
-                  }}
-                  required
-                />
-              </div>
-            </div>
-            <a
-              href="https://github.com/settings/tokens"
-              target="_blank"
-              rel="noreferrer"
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div
               style={{
-                display: 'inline-flex',
+                display: 'flex',
                 alignItems: 'center',
-                gap: '4px',
-                fontSize: '0.74rem',
-                color: '#818cf8',
-                textDecoration: 'none',
+                gap: '6px',
+                fontSize: '0.75rem',
+                color: '#64748b',
               }}
             >
-              Generate classic token with <code style={{ color: '#c7d2fe', padding: '1px 4px' }}>repo</code> & <code style={{ color: '#c7d2fe', padding: '1px 4px' }}>read:user</code> scopes
-              <ExternalLink size={12} />
-            </a>
+              <ShieldCheck size={15} color="#818cf8" />
+              <span>Standard OAuth 2.0 authorization with encrypted token storage.</span>
+            </div>
             <button
-              type="submit"
-              disabled={saving || !pat.trim()}
+              type="button"
+              onClick={handleOAuthConnect}
+              disabled={connecting}
               style={{
                 width: '100%',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: '6px',
+                gap: '8px',
                 padding: '10px 16px',
-                background: '#4f46e5',
+                background: '#24292f',
                 color: '#ffffff',
                 fontSize: '0.82rem',
                 fontWeight: 600,
                 borderRadius: '8px',
-                border: 'none',
-                cursor: saving || !pat.trim() ? 'not-allowed' : 'pointer',
-                opacity: saving || !pat.trim() ? 0.6 : 1,
+                border: '1px solid rgba(255, 255, 255, 0.15)',
+                cursor: connecting ? 'not-allowed' : 'pointer',
+                opacity: connecting ? 0.7 : 1,
                 transition: 'background 0.2s ease',
               }}
             >
-              {saving ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : null}
-              Save & Activate GitHub MCP
+              {connecting ? (
+                <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
+              ) : (
+                <GitHubIcon size={16} color="#ffffff" />
+              )}
+              {connecting ? 'Connecting...' : 'Connect with GitHub'}
+              <ExternalLink size={12} style={{ opacity: 0.7 }} />
             </button>
-          </form>
+          </div>
         )}
       </div>
 

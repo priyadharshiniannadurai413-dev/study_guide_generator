@@ -79,7 +79,11 @@ class TokenExchangeResult(str):
         return iter((str(self), self.scopes))
 
 
-def generate_github_auth_url(user_id: str, redirect_uri: Optional[str] = None) -> str:
+def generate_github_auth_url(
+    user_id: str,
+    redirect_uri: Optional[str] = None,
+    return_to: Optional[str] = None,
+) -> str:
     """
     Generate the GitHub OAuth redirect URL with a secure signed state parameter
     encoding the user's ID to prevent CSRF attacks.
@@ -87,16 +91,21 @@ def generate_github_auth_url(user_id: str, redirect_uri: Optional[str] = None) -
     Args:
         user_id: Clerk user identifier ('sub').
         redirect_uri: Optional custom redirect URI (defaults to settings.GITHUB_OAUTH_REDIRECT_URI).
+        return_to: Optional frontend destination URL to redirect to upon completion.
 
     Returns:
         Full GitHub authorization URL string.
     """
     _require_oauth_config()
+    state_payload = {
+        "sub": user_id,
+        "exp": datetime.now(timezone.utc) + timedelta(minutes=_STATE_TTL_MINUTES),
+    }
+    if return_to:
+        state_payload["return_to"] = return_to
+
     state = jwt.encode(
-        {
-            "sub": user_id,
-            "exp": datetime.now(timezone.utc) + timedelta(minutes=_STATE_TTL_MINUTES),
-        },
+        state_payload,
         _signing_key(),
         algorithm="HS256",
     )
@@ -117,6 +126,37 @@ def generate_github_auth_url(user_id: str, redirect_uri: Optional[str] = None) -
 build_authorize_url = generate_github_auth_url
 
 
+def decode_state_payload(state: str) -> dict:
+    """
+    Validate the signed OAuth state JWT and return the full decoded payload dictionary.
+
+    Args:
+        state: State token received from GitHub redirect callback.
+
+    Returns:
+        The decoded JWT payload dict (containing 'sub' and optionally 'return_to').
+
+    Raises:
+        HTTPException: 400 if state is expired, tampered, or invalid.
+    """
+    try:
+        payload = jwt.decode(state, _signing_key(), algorithms=["HS256"])
+        user_id = payload.get("sub")
+        if not user_id:
+            raise JWTError("state payload missing 'sub'")
+        return payload
+    except ExpiredSignatureError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="GitHub sign-in link expired. Please try connecting again.",
+        )
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid GitHub sign-in state.",
+        )
+
+
 def verify_state(state: str) -> str:
     """
     Validate the signed OAuth state JWT and return the user ID it was issued for.
@@ -130,22 +170,8 @@ def verify_state(state: str) -> str:
     Raises:
         HTTPException: 400 if state is expired, tampered, or invalid.
     """
-    try:
-        payload = jwt.decode(state, _signing_key(), algorithms=["HS256"])
-        user_id = payload.get("sub")
-        if not user_id:
-            raise JWTError("state payload missing 'sub'")
-        return user_id
-    except ExpiredSignatureError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="GitHub sign-in link expired. Please try connecting again.",
-        )
-    except JWTError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid GitHub sign-in state.",
-        )
+    payload = decode_state_payload(state)
+    return payload["sub"]
 
 
 def exchange_code_for_token(

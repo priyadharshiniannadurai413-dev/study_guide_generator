@@ -11,7 +11,7 @@ import { TwoMarkTestArena } from './components/study/TwoMarkTestArena';
 import { GitHubWorkbench } from './components/github/GitHubWorkbench';
 import { MCPConnectorsHub } from './components/mcp/MCPConnectorsHub';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
-import { ToastProvider } from './context/ToastContext';
+import { ToastProvider, useToast } from './context/ToastContext';
 import { AuthProvider } from './context/AuthContext';
 import { endpoints } from './api/endpoints';
 
@@ -87,6 +87,7 @@ function GitHubCallbackHandler() {
 }
 
 function AppContent() {
+  const { addToast } = useToast();
   const isGitHubCallback = window.location.pathname === '/github/callback';
   if (isGitHubCallback) {
     return <GitHubCallbackHandler />;
@@ -97,9 +98,43 @@ function AppContent() {
     const hash = window.location.hash;
     if (path === '/sign-in' || hash === '#sign-in') return 'sign-in';
     if (path === '/sign-up' || hash === '#sign-up') return 'sign-up';
+    if (path === '/settings' || hash === '#settings' || window.location.search.includes('github=')) return 'mcp';
     return 'dashboard';
   });
   const [selectedDocForStudy, setSelectedDocForStudy] = useState('syllabus');
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const githubStatus = params.get('github');
+    if (githubStatus === 'connected') {
+      const login = params.get('login');
+      addToast(
+        login
+          ? `Successfully linked GitHub account @${login}!`
+          : 'Successfully linked GitHub account!',
+        'success'
+      );
+      params.delete('github');
+      params.delete('login');
+      const newQuery = params.toString() ? `?${params.toString()}` : '';
+      window.history.replaceState(
+        {},
+        document.title,
+        window.location.pathname + newQuery + window.location.hash
+      );
+    } else if (githubStatus === 'error') {
+      const reason = params.get('reason') || 'Authorization was not completed.';
+      addToast(`GitHub connection failed: ${reason}`, 'error');
+      params.delete('github');
+      params.delete('reason');
+      const newQuery = params.toString() ? `?${params.toString()}` : '';
+      window.history.replaceState(
+        {},
+        document.title,
+        window.location.pathname + newQuery + window.location.hash
+      );
+    }
+  }, [addToast]);
 
   useEffect(() => {
     const handlePopState = () => {

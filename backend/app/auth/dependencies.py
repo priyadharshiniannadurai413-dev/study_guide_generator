@@ -44,25 +44,29 @@ async def get_current_user(
     if credentials and credentials.credentials:
         token = credentials.credentials
     else:
-        # Fallback to manual Authorization header parsing
+        # Check query param ?token= first (useful for direct browser redirects like OAuth login)
+        query_token = request.query_params.get("token")
         auth_header = request.headers.get("Authorization")
-        if not auth_header:
-            logger.info("[Auth] No Authorization header provided")
+
+        if query_token:
+            token = query_token
+        elif auth_header:
+            parts = auth_header.strip().split()
+            if len(parts) != 2 or parts[0].lower() != "bearer":
+                logger.info(f"[Auth] Malformed Authorization header: {auth_header[:20]}...")
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid Authorization header format. Use: Bearer <token>",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+            token = parts[1]
+        else:
+            logger.info("[Auth] No Authorization header or token query parameter provided")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Authentication required. Please sign in.",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-
-        parts = auth_header.strip().split()
-        if len(parts) != 2 or parts[0].lower() != "bearer":
-            logger.info(f"[Auth] Malformed Authorization header: {auth_header[:20]}...")
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid Authorization header format. Use: Bearer <token>",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-        token = parts[1]
 
     # Support  development tokens (e.g. dev_*, student_demo_user)
     if token and (token.startswith("dev_") or token in ("student_demo_user", "student_dev_token", "demo_token")):

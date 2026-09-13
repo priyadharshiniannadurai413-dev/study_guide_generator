@@ -23,6 +23,20 @@ function GitHubCallbackHandler() {
     const params = new URLSearchParams(window.location.search);
     const code = params.get('code');
     const state = params.get('state');
+    const error = params.get('error');
+    const errorDescription = params.get('error_description');
+
+    if (error) {
+      const reason = errorDescription || error;
+      setStatusText(`GitHub authorization incomplete: ${reason}`);
+      if (window.opener) {
+        window.opener.postMessage({ type: 'GITHUB_AUTH_ERROR', error: reason }, '*');
+        setTimeout(() => window.close(), 1500);
+      } else {
+        setTimeout(() => window.location.replace(`/settings?github=error&reason=${encodeURIComponent(reason)}`), 1500);
+      }
+      return;
+    }
 
     if (!code || !state) {
       setStatusText('Missing OAuth code or state parameter from GitHub.');
@@ -41,10 +55,23 @@ function GitHubCallbackHandler() {
             '*'
           );
         }
-        setTimeout(() => window.close(), 1400);
+        setTimeout(() => {
+          if (window.opener) {
+            window.close();
+          } else {
+            window.location.replace(`/settings?github=connected&login=${encodeURIComponent(login)}`);
+          }
+        }, 1200);
       })
       .catch((err) => {
-        setStatusText(`Connection failed: ${err.message || 'Unknown error'}`);
+        const msg = err.message || 'Connection failed';
+        setStatusText(`Connection failed: ${msg}`);
+        if (window.opener) {
+          window.opener.postMessage({ type: 'GITHUB_AUTH_ERROR', error: msg }, '*');
+          setTimeout(() => window.close(), 1800);
+        } else {
+          setTimeout(() => window.location.replace(`/settings?github=error&reason=${encodeURIComponent(msg)}`), 1800);
+        }
       });
   }, []);
 
@@ -78,7 +105,7 @@ function GitHubCallbackHandler() {
         <p style={{ color: '#94a3b8', fontSize: '15px' }}>{statusText}</p>
         {isDone && (
           <p style={{ fontSize: '13px', color: '#64748b' }}>
-            This window will close automatically.
+            Redirecting back to your workspace...
           </p>
         )}
       </div>
@@ -88,7 +115,9 @@ function GitHubCallbackHandler() {
 
 function AppContent() {
   const { addToast } = useToast();
-  const isGitHubCallback = window.location.pathname === '/github/callback';
+  const isGitHubCallback =
+    window.location.pathname === '/github/callback' ||
+    window.location.pathname === '/auth/github/callback';
   if (isGitHubCallback) {
     return <GitHubCallbackHandler />;
   }

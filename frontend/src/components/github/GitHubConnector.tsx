@@ -217,10 +217,10 @@ export const GitHubConnector: React.FC = () => {
           </div>
           <div>
             <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: '#ffffff' }}>
-              GitHub OAuth Integration
+              GitHub
             </h3>
             <p style={{ margin: '2px 0 0 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-              Connect repositories for code analysis, commit history, and automated review
+              Connect your GitHub account to access your repositories.
             </p>
           </div>
         </div>
@@ -241,7 +241,7 @@ export const GitHubConnector: React.FC = () => {
               fontWeight: 600,
             }}
           >
-            <CheckCircle2 size={14} /> Connected {connectedLogin ? `@${connectedLogin}` : ''}
+            <CheckCircle2 size={14} /> ✓ GitHub Connected
           </span>
         ) : (
           <span
@@ -314,7 +314,7 @@ export const GitHubConnector: React.FC = () => {
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <ShieldCheck size={18} color="#34d399" />
                 <span style={{ fontSize: '0.88rem', fontWeight: 600, color: '#f8fafc' }}>
-                  Authenticated as @{connectedLogin || 'user'}
+                  Username: {connectedLogin ? `@${connectedLogin}` : 'connected'}
                 </span>
               </div>
               <button
@@ -333,7 +333,7 @@ export const GitHubConnector: React.FC = () => {
                 }}
               >
                 {disconnecting ? <Loader2 size={14} className="spin" /> : <Unlink size={14} />}
-                {disconnecting ? 'Disconnecting...' : 'Disconnect'}
+                {disconnecting ? 'Disconnecting...' : 'Disconnect GitHub'}
               </button>
             </div>
             <p style={{ margin: 0, fontSize: '0.80rem', color: '#94a3b8', lineHeight: 1.5 }}>
@@ -348,8 +348,8 @@ export const GitHubConnector: React.FC = () => {
               gap: '14px',
             }}
           >
-            <p style={{ margin: 0, fontSize: '0.84rem', color: '#94a3b8', lineHeight: 1.5 }}>
-              Authorize StudyGenie via GitHub OAuth to allow your AI Copilot to explore repository code, read assignments, and track commit histories without manually generating or copying tokens.
+            <p style={{ margin: 0, fontSize: '0.88rem', color: '#cbd5e1', lineHeight: 1.5 }}>
+              Connect your GitHub account to access your repositories.
             </p>
 
             <div
@@ -375,12 +375,12 @@ export const GitHubConnector: React.FC = () => {
                   alignItems: 'center',
                   justifyContent: 'center',
                   gap: '10px',
-                  padding: '10px 20px',
+                  padding: '10px 22px',
                   borderRadius: 'var(--radius-md)',
                   background: '#24292f',
                   color: '#ffffff',
                   border: '1px solid rgba(255, 255, 255, 0.15)',
-                  fontSize: '0.88rem',
+                  fontSize: '0.90rem',
                   fontWeight: 600,
                   cursor: connecting ? 'not-allowed' : 'pointer',
                   boxShadow: '0 4px 12px rgba(0, 0, 0, 0.25)',
@@ -394,7 +394,7 @@ export const GitHubConnector: React.FC = () => {
                 ) : (
                   <GitHubIcon size={18} color="#ffffff" />
                 )}
-                {connecting ? 'Connecting...' : 'Connect with GitHub'}
+                {connecting ? 'Connecting...' : 'Connect GitHub'}
                 <ExternalLink size={14} style={{ opacity: 0.7 }} />
               </button>
             </div>

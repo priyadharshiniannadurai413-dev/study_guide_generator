@@ -173,13 +173,14 @@ async def github_callback_get(
         access_token, scopes = github_oauth.exchange_code_for_token(code)
         github_login = github_oauth.fetch_github_login(access_token)
     except Exception as exc:
-        logger.error(f"[GitHubAuth] Token exchange failed: {exc}")
-        target_error_url = f"{frontend_base}/settings?github=error&reason={urllib.parse.quote(str(exc))}"
+        safe_msg = getattr(exc, "detail", "Token exchange failed")
+        logger.error(f"[GitHubAuth] Token exchange failed: {safe_msg}")
+        target_error_url = f"{frontend_base}/settings?github=error&reason={urllib.parse.quote(str(safe_msg))}"
         return HTMLResponse(
             content=f"""
             <script>
                 if (window.opener) {{
-                    window.opener.postMessage({{ type: 'GITHUB_AUTH_ERROR', error: 'Token exchange failed' }}, '*');
+                    window.opener.postMessage({{ type: 'GITHUB_AUTH_ERROR', error: '{safe_msg}' }}, '*');
                     window.close();
                 }} else {{
                     window.location.replace("{target_error_url}");
@@ -190,13 +191,30 @@ async def github_callback_get(
         )
 
     # 4. Encrypt and store token in MongoDB
-    await token_store.save_user_token(
-        user_id=user_id,
-        token=access_token,
-        github_login=github_login,
-        scopes=scopes,
-    )
-    logger.info(f"[GitHubAuth] Stored encrypted GitHub token for {user_id} (@{github_login})")
+    try:
+        await token_store.save_user_token(
+            user_id=user_id,
+            token=access_token,
+            github_login=github_login,
+            scopes=scopes,
+        )
+        logger.info(f"[GitHubAuth] Stored encrypted GitHub token for {user_id} (@{github_login})")
+    except Exception as exc:
+        logger.error(f"[GitHubAuth] Failed to store encrypted token for user {user_id}: {exc}")
+        target_error_url = f"{frontend_base}/settings?github=error&reason=Token+storage+failed"
+        return HTMLResponse(
+            content=f"""
+            <script>
+                if (window.opener) {{
+                    window.opener.postMessage({{ type: 'GITHUB_AUTH_ERROR', error: 'Token storage failed' }}, '*');
+                    window.close();
+                }} else {{
+                    window.location.replace("{target_error_url}");
+                }}
+            </script>
+            """,
+            status_code=status.HTTP_200_OK,
+        )
 
     # If client accepts JSON or requests json format, return JSON
     if request and "application/json" in request.headers.get("accept", ""):
@@ -213,7 +231,7 @@ async def github_callback_get(
         sep = "&" if "?" in return_to else "?"
         target_success_url = f"{return_to}{sep}github=connected&login={urllib.parse.quote(github_login)}"
     else:
-        target_success_url = f"{frontend_base}/mcp?github=connected&login={urllib.parse.quote(github_login)}"
+        target_success_url = f"{frontend_base}/settings?github=connected&login={urllib.parse.quote(github_login)}"
 
     # Return clean success HTML confirmation
     html_content = f"""

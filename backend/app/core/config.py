@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     # MongoDB Configuration
     MONGODB_URL: Optional[str] = None
     MONGODB_URI: Optional[str] = None  # Backward-compatibility alias
-    DB_NAME: str = "Chatbot"
+    DB_NAME: str = "Study_plan_generator"
 
     # GitHub OAuth & Legacy PAT
     GITHUB_API_KEY: Optional[str] = None  # Legacy PAT (optional)
@@ -82,6 +82,11 @@ class Settings(BaseSettings):
         # Resolve MONGODB_URL from MONGODB_URI fallback if needed
         if not self.MONGODB_URL and self.MONGODB_URI:
             self.MONGODB_URL = self.MONGODB_URI
+
+        # Resolve production redirect URI if running on Render
+        render_url = (os.environ.get("RENDER_EXTERNAL_URL") or "").strip().rstrip("/")
+        if render_url and (not self.GITHUB_OAUTH_REDIRECT_URI or "localhost" in (self.GITHUB_OAUTH_REDIRECT_URI or "")):
+            self.GITHUB_OAUTH_REDIRECT_URI = f"{render_url}/auth/github/callback"
 
         # Resolve GITHUB_OAUTH_REDIRECT_URI from GITHUB_REDIRECT_URI or FRONTEND_URL
         if not self.GITHUB_OAUTH_REDIRECT_URI and self.GITHUB_REDIRECT_URI:

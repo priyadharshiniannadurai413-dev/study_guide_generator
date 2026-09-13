@@ -3,7 +3,7 @@ import { FolderGit2, Search, Code, FileText, Loader2, RefreshCw, AlertCircle } f
 import { useAuth } from '@clerk/clerk-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { getStoredToken, API_BASE } from '../../api/client';
+import { getEffectiveToken, API_BASE } from '../../api/client';
 
 export const GitHubWorkbench: React.FC = () => {
   const { getToken } = useAuth();
@@ -21,7 +21,7 @@ export const GitHubWorkbench: React.FC = () => {
     } catch {
       // Fallback
     }
-    return getStoredToken();
+    return await getEffectiveToken();
   };
 
   const executeOperation = async () => {

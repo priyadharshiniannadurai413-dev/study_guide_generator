@@ -29,6 +29,25 @@ def _get_headers(token: str) -> Dict[str, str]:
     }
 
 
+def _handle_api_response(resp: requests.Response, endpoint: str) -> Optional[str]:
+    """
+    Log safe status and check for errors, specifically handling 401 Unauthorized.
+    """
+    logger.info(f"[GitHubTools] endpoint={endpoint} github_status={resp.status_code}")
+    if resp.status_code == 401:
+        logger.warning(
+            f"[GitHubTools] github_status=401 endpoint={endpoint}. "
+            "GitHub access token is invalid, expired, or revoked."
+        )
+        return (
+            "GitHub API error 401: Bad credentials. The connected GitHub access token is "
+            "invalid, expired, or revoked. Please reconnect your GitHub account in Settings."
+        )
+    if resp.status_code != 200:
+        return f"GitHub API error {resp.status_code}: {resp.text}"
+    return None
+
+
 def _parse_owner_repo(owner: str, repo: str, default_owner: str = "") -> Tuple[str, str]:
     """
     Safely normalize owner and repo strings.
@@ -70,8 +89,9 @@ def create_user_github_tools(token: str, default_owner: str = "") -> List[BaseTo
                 params={"q": query.strip(), "per_page": min(max(per_page, 1), 15)},
                 timeout=DEFAULT_TIMEOUT,
             )
-            if resp.status_code != 200:
-                return f"GitHub API error {resp.status_code}: {resp.text}"
+            err = _handle_api_response(resp, "/search/repositories")
+            if err:
+                return err
             items = resp.json().get("items", [])
             if not items:
                 return f"No repositories found matching '{query}'."
@@ -102,8 +122,9 @@ def create_user_github_tools(token: str, default_owner: str = "") -> List[BaseTo
                 params={"per_page": min(per_page, 30), "sort": sort},
                 timeout=DEFAULT_TIMEOUT,
             )
-            if resp.status_code != 200:
-                return f"GitHub API error {resp.status_code}: {resp.text}"
+            err = _handle_api_response(resp, "/user/repos")
+            if err:
+                return err
             repos = resp.json()
             if not repos:
                 return "No repositories found for this account."
@@ -137,8 +158,9 @@ def create_user_github_tools(token: str, default_owner: str = "") -> List[BaseTo
             )
             if resp.status_code == 404:
                 return f"Repository '{owner}/{repo}' not found or access denied."
-            if resp.status_code != 200:
-                return f"GitHub API error {resp.status_code}: {resp.text}"
+            err = _handle_api_response(resp, f"/repos/{owner}/{repo}")
+            if err:
+                return err
             data = resp.json()
             return (
                 f"### Repository: {data.get('full_name')}\n"
@@ -205,8 +227,9 @@ def create_user_github_tools(token: str, default_owner: str = "") -> List[BaseTo
                     hint = f"\n\nAvailable items in `{owner}/{repo}/{dirname or 'root'}`:\n" + "\n".join(avail)
                 return f"File or path '{path}' not found in '{owner}/{repo}'.{hint}"
 
-            if resp.status_code != 200:
-                return f"GitHub API error {resp.status_code}: {resp.text}"
+            err = _handle_api_response(resp, f"/repos/{owner}/{repo}/contents/{clean_path}")
+            if err:
+                return err
 
             data = resp.json()
 
@@ -251,8 +274,9 @@ def create_user_github_tools(token: str, default_owner: str = "") -> List[BaseTo
                 params={"per_page": min(per_page, 15)},
                 timeout=DEFAULT_TIMEOUT,
             )
-            if resp.status_code != 200:
-                return f"GitHub API error {resp.status_code}: {resp.text}"
+            err = _handle_api_response(resp, f"/repos/{owner}/{repo}/commits")
+            if err:
+                return err
             commits = resp.json()
             if not commits:
                 return f"No commits found for '{owner}/{repo}'."
@@ -292,8 +316,9 @@ def create_user_github_tools(token: str, default_owner: str = "") -> List[BaseTo
                 params={"q": q, "per_page": 5},
                 timeout=DEFAULT_TIMEOUT,
             )
-            if resp.status_code != 200:
-                return f"GitHub API search error {resp.status_code}: {resp.text}"
+            err = _handle_api_response(resp, "/search/code")
+            if err:
+                return err
             items = resp.json().get("items", [])
             if not items:
                 return f"No code results found for '{query}'."

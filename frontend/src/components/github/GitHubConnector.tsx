@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { CheckCircle2, XCircle, Key, Loader2, Unlink } from 'lucide-react';
 import { useAuth } from '@clerk/clerk-react';
-import { getStoredToken, API_BASE } from '../../api/client';
+import { getEffectiveToken, API_BASE } from '../../api/client';
 
 function GitHubIcon({ size = 20, color = 'currentColor' }: { size?: number; color?: string }) {
   return (
@@ -36,7 +36,7 @@ export const GitHubConnector: React.FC = () => {
     } catch {
       // Fallback
     }
-    return getStoredToken();
+    return await getEffectiveToken();
   };
 
   const fetchStatus = async () => {

@@ -264,10 +264,12 @@ def is_token_active(access_token: str) -> Optional[bool]:
         logger.warning(f"[GitHubOAuth] Token validation request failed: {exc}")
         return None
 
+    if resp is not None:
+        logger.info(f"[GitHubOAuth] endpoint=/user github_status={resp.status_code}")
     if resp.status_code == 200:
         return True
     if resp.status_code == 401:
-        logger.info("[GitHubOAuth] Token rejected by GitHub (401) — token is revoked")
+        logger.warning("[GitHubOAuth] github_status=401 endpoint=/user — token is revoked or expired")
         return False
 
     return None

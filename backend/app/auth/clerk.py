@@ -128,12 +128,13 @@ def verify_clerk_token(token: str) -> Dict[str, Any]:
 
         issuer = getattr(settings, "CLERK_ISSUER", None)
         if issuer:
+            issuer_clean = issuer.strip().rstrip("/")
             options["verify_iss"] = True
             payload = jwt.decode(
                 token,
                 rsa_key,
                 algorithms=["RS256"],
-                issuer=issuer,
+                issuer=issuer_clean,
                 options=options,
             )
         else:

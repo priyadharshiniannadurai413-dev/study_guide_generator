@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { CheckCircle2, XCircle, Key, Loader2, Unlink, ExternalLink } from 'lucide-react';
 import { useAuth } from '@clerk/clerk-react';
-import { API_BASE } from '../../api/client';
+import { API_BASE, getEffectiveToken } from '../../api/client';
 
 function GitHubIcon({ size = 22, color = '#ffffff' }: { size?: number; color?: string }) {
   return (
@@ -23,7 +23,7 @@ export const GitHubConnectorCard: React.FC = () => {
   const checkStatus = async () => {
     try {
       setLoading(true);
-      const token = await getToken();
+      const token = await getEffectiveToken();
       const res = await fetch(`${API_BASE}/api/integrations/status`, {
         headers: {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),

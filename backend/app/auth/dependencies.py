@@ -83,4 +83,9 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    origin = request.headers.get("origin", "")
+    logger.info(
+        f"[Auth] Authenticated Clerk user_id={user_id} path={request.url.path} origin={origin}"
+    )
+
     return payload

@@ -42,10 +42,10 @@ def _get_fernet() -> Fernet:
     return _fernet
 
 
-def get_token_collection():
+def get_token_collection(db_name_override: str | None = None):
     if db_instance.client is None:
         return None
-    db_name = getattr(settings, "DB_NAME", None) or "Chatbot"
+    db_name = db_name_override or getattr(settings, "DB_NAME", None) or "Study_plan_generator"
     return db_instance.client[db_name]["github_tokens"]
 
 
@@ -87,7 +87,7 @@ async def save_token(
         upsert=True,
     )
     logger.info(
-        f"[TokenStore] Saved GitHub token for {clerk_user_id} (login: {github_login})"
+        f"[TokenStore] Saved GitHub token for clerk_user_id={clerk_user_id} (github_user={github_login})"
     )
 
 
@@ -108,18 +108,35 @@ async def save_user_token(
 
 async def get_decrypted_token(clerk_user_id: str) -> str | None:
     """Return the plaintext access token for a user, or None if not connected."""
-    coll = get_token_collection()
-    if coll is None:
+    if db_instance.client is None:
+        logger.warning("[TokenStore] MongoDB client is not connected.")
         return None
 
-    doc = await coll.find_one({"clerk_user_id": clerk_user_id})
+    primary_db = getattr(settings, "DB_NAME", None) or "Study_plan_generator"
+    fallback_dbs = [primary_db]
+    for alt in ("Study_plan_generator", "Chatbot"):
+        if alt not in fallback_dbs:
+            fallback_dbs.append(alt)
+
+    doc = None
+    for candidate_db in fallback_dbs:
+        coll = db_instance.client[candidate_db]["github_tokens"]
+        doc = await coll.find_one({"clerk_user_id": clerk_user_id})
+        if doc:
+            break
+
     if not doc:
+        logger.info(f"[TokenStore] github_token_exists=false clerk_user_id={clerk_user_id}")
         return None
+
+    logger.info(f"[TokenStore] github_token_exists=true clerk_user_id={clerk_user_id}")
     try:
-        return _get_fernet().decrypt(doc["encrypted_token"].encode()).decode()
+        decrypted = _get_fernet().decrypt(doc["encrypted_token"].encode()).decode()
+        logger.info(f"[TokenStore] github_token_decryption=true clerk_user_id={clerk_user_id}")
+        return decrypted
     except (InvalidToken, KeyError):
         logger.error(
-            f"[TokenStore] Decryption failed for {clerk_user_id} — "
+            f"[TokenStore] github_token_decryption=false clerk_user_id={clerk_user_id} — "
             f"TOKEN_ENCRYPTION_KEY may have changed. User must reconnect GitHub."
         )
         return None
@@ -127,15 +144,25 @@ async def get_decrypted_token(clerk_user_id: str) -> str | None:
 
 async def get_github_login(clerk_user_id: str) -> str | None:
     """Return the connected GitHub username for display, or None."""
-    coll = get_token_collection()
-    if coll is None:
+    if db_instance.client is None:
         return None
 
-    doc = await coll.find_one(
-        {"clerk_user_id": clerk_user_id},
-        {"github_login": 1},
-    )
-    return doc.get("github_login") if doc else None
+    primary_db = getattr(settings, "DB_NAME", None) or "Study_plan_generator"
+    fallback_dbs = [primary_db]
+    for alt in ("Study_plan_generator", "Chatbot"):
+        if alt not in fallback_dbs:
+            fallback_dbs.append(alt)
+
+    for candidate_db in fallback_dbs:
+        coll = db_instance.client[candidate_db]["github_tokens"]
+        doc = await coll.find_one(
+            {"clerk_user_id": clerk_user_id},
+            {"github_login": 1},
+        )
+        if doc and doc.get("github_login"):
+            return doc.get("github_login")
+
+    return None
 
 
 async def delete_token(clerk_user_id: str) -> bool:

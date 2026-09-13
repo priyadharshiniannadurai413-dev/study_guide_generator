@@ -97,19 +97,21 @@ def generate_github_auth_url(
         Full GitHub authorization URL string.
     """
     _require_oauth_config()
+    target_redirect = redirect_uri or settings.GITHUB_OAUTH_REDIRECT_URI
     state_payload = {
         "sub": user_id,
         "exp": datetime.now(timezone.utc) + timedelta(minutes=_STATE_TTL_MINUTES),
     }
     if return_to:
         state_payload["return_to"] = return_to
+    if target_redirect:
+        state_payload["redirect_uri"] = target_redirect
 
     state = jwt.encode(
         state_payload,
         _signing_key(),
         algorithm="HS256",
     )
-    target_redirect = redirect_uri or settings.GITHUB_OAUTH_REDIRECT_URI
     params_dict = {
         "client_id": settings.GITHUB_OAUTH_CLIENT_ID,
         "scope": _GITHUB_SCOPES,

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { CheckCircle2, XCircle, Loader2, Unlink, ExternalLink, ShieldCheck } from 'lucide-react';
 import { useAuth } from '@clerk/clerk-react';
 import { getEffectiveToken, API_BASE } from '../../api/client';
+import { endpoints } from '../../api/endpoints';
 
 function GitHubIcon({ size = 20, color = 'currentColor' }: { size?: number; color?: string }) {
   return (
@@ -98,6 +99,33 @@ export const GitHubConnector: React.FC = () => {
     try {
       setConnecting(true);
       setStatusMsg(null);
+
+      // 1. Fetch direct authorize URL from authenticated backend
+      try {
+        const res = await endpoints.getGitHubAuthUrl({
+          returnTo: window.location.href,
+        });
+        if (res && res.authorize_url) {
+          const width = 600;
+          const height = 700;
+          const left = window.screenX + (window.outerWidth - width) / 2;
+          const top = window.screenY + (window.outerHeight - height) / 2;
+          const popup = window.open(
+            res.authorize_url,
+            'github_oauth',
+            `width=${width},height=${height},left=${left},top=${top},menubar=no,toolbar=no,status=no`
+          );
+
+          if (!popup || popup.closed || typeof popup.closed === 'undefined') {
+            window.location.href = res.authorize_url;
+          }
+          return;
+        }
+      } catch (authErr: any) {
+        console.warn('API getGitHubAuthUrl fallback to direct login:', authErr);
+      }
+
+      // 2. Fallback: navigate directly to backend /auth/github/login
       const token = await getAuthToken();
       if (!token) {
         setStatusMsg({ text: 'Please log in to your account first.', type: 'error' });
@@ -105,8 +133,6 @@ export const GitHubConnector: React.FC = () => {
       }
 
       const loginUrl = `${API_BASE}/auth/github/login?token=${encodeURIComponent(token)}&return_to=${encodeURIComponent(window.location.href)}`;
-
-      // Try opening centered popup
       const width = 600;
       const height = 700;
       const left = window.screenX + (window.outerWidth - width) / 2;
@@ -117,7 +143,6 @@ export const GitHubConnector: React.FC = () => {
         `width=${width},height=${height},left=${left},top=${top},menubar=no,toolbar=no,status=no`
       );
 
-      // If browser blocked popup, fallback to direct page navigation
       if (!popup || popup.closed || typeof popup.closed === 'undefined') {
         window.location.href = loginUrl;
       }

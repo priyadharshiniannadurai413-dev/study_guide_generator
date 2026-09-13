@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { CheckCircle2, XCircle, Loader2, Unlink, ExternalLink, ShieldCheck } from 'lucide-react';
 import { useAuth } from '@clerk/clerk-react';
 import { API_BASE, getEffectiveToken } from '../../api/client';
+import { endpoints } from '../../api/endpoints';
 
 function GitHubIcon({ size = 22, color = '#ffffff' }: { size?: number; color?: string }) {
   return (
@@ -81,6 +82,32 @@ export const GitHubConnectorCard: React.FC = () => {
   const handleOAuthConnect = async () => {
     try {
       setConnecting(true);
+
+      // 1. Try direct API authorize URL
+      try {
+        const res = await endpoints.getGitHubAuthUrl({
+          returnTo: window.location.href,
+        });
+        if (res && res.authorize_url) {
+          const width = 600;
+          const height = 700;
+          const left = window.screenX + (window.outerWidth - width) / 2;
+          const top = window.screenY + (window.outerHeight - height) / 2;
+          const popup = window.open(
+            res.authorize_url,
+            'github_oauth',
+            `width=${width},height=${height},left=${left},top=${top},menubar=no,toolbar=no,status=no`
+          );
+          if (!popup || popup.closed || typeof popup.closed === 'undefined') {
+            window.location.href = res.authorize_url;
+          }
+          return;
+        }
+      } catch (authErr: any) {
+        console.warn('API getGitHubAuthUrl fallback:', authErr);
+      }
+
+      // 2. Fallback: navigate directly to login URL
       const token = await getAuthToken();
       if (!token) {
         alert('Please log in first.');
@@ -88,7 +115,6 @@ export const GitHubConnectorCard: React.FC = () => {
       }
 
       const loginUrl = `${API_BASE}/auth/github/login?token=${encodeURIComponent(token)}&return_to=${encodeURIComponent(window.location.href)}`;
-
       const width = 600;
       const height = 700;
       const left = window.screenX + (window.outerWidth - width) / 2;

@@ -36,7 +36,9 @@ class GitHubCallbackRequest(BaseModel):
 
 
 @router.get("/login")
+@router.get("/login/")
 async def github_login(
+    request: Request,
     redirect: bool = Query(
         default=True,
         description="Whether to return a 307 redirect directly to GitHub or a JSON payload with authorize_url",
@@ -60,9 +62,41 @@ async def github_login(
     Requires authenticated Clerk user (provided via Bearer header or ?token= query param).
     """
     user_id = current_user["sub"]
+
+    effective_redirect_uri = redirect_uri
+    if not effective_redirect_uri:
+        configured = getattr(settings, "GITHUB_OAUTH_REDIRECT_URI", None) or getattr(settings, "GITHUB_REDIRECT_URI", None)
+        proto = request.headers.get("x-forwarded-proto", request.url.scheme)
+        host = request.headers.get("x-forwarded-host") or request.url.netloc
+        dynamic_cb = f"{proto}://{host}/auth/github/callback"
+
+        def _is_invalid_or_placeholder(uri: Optional[str]) -> bool:
+            if not uri:
+                return True
+            lower = uri.lower()
+            return any(
+                p in lower
+                for p in ("your-backend", "localhost", "127.0.0.1", "example.com", "placeholder", "<", ">")
+            )
+
+        if configured and not _is_invalid_or_placeholder(configured):
+            effective_redirect_uri = configured
+        elif host and ("onrender.com" in host or "render" in host):
+            effective_redirect_uri = dynamic_cb
+        elif configured and "your-backend" not in configured.lower():
+            effective_redirect_uri = configured
+        elif host:
+            effective_redirect_uri = dynamic_cb
+        else:
+            effective_redirect_uri = "https://study-guide-generator-1r0f.onrender.com/auth/github/callback"
+
+        # Final safety check: never return a your-backend placeholder
+        if effective_redirect_uri and "your-backend" in effective_redirect_uri.lower():
+            effective_redirect_uri = "https://study-guide-generator-1r0f.onrender.com/auth/github/callback"
+
     authorize_url = github_oauth.generate_github_auth_url(
         user_id,
-        redirect_uri=redirect_uri,
+        redirect_uri=effective_redirect_uri,
         return_to=return_to,
     )
 
@@ -75,6 +109,7 @@ async def github_login(
 
 
 @router.get("/callback")
+@router.get("/callback/")
 async def github_callback_get(
     code: Optional[str] = Query(default=None, description="Authorization code returned by GitHub"),
     state: Optional[str] = Query(default=None, description="Signed state token returned by GitHub"),
@@ -145,12 +180,14 @@ async def github_callback_get(
         """
         return HTMLResponse(content=err_html, status_code=status.HTTP_200_OK)
 
-    # 2. Validate signed state (extracts user_id and return_to securely bound to state JWT)
+    # 2. Validate signed state (extracts user_id, return_to, and redirect_uri securely bound to state JWT)
     return_to = None
+    state_redirect_uri = None
     try:
         payload = github_oauth.decode_state_payload(state)
         user_id = payload["sub"]
         return_to = payload.get("return_to")
+        state_redirect_uri = payload.get("redirect_uri")
     except Exception as exc:
         logger.error(f"[GitHubAuth] Invalid state token: {exc}")
         target_error_url = f"{frontend_base}/settings?github=error&reason=Invalid+or+expired+state+token"
@@ -170,7 +207,7 @@ async def github_callback_get(
 
     # 3. Exchange code for access token and scopes
     try:
-        access_token, scopes = github_oauth.exchange_code_for_token(code)
+        access_token, scopes = github_oauth.exchange_code_for_token(code, redirect_uri=state_redirect_uri)
         github_login = github_oauth.fetch_github_login(access_token)
     except Exception as exc:
         safe_msg = getattr(exc, "detail", "Token exchange failed")

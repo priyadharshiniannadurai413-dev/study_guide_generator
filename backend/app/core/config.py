@@ -96,13 +96,20 @@ class Settings(BaseSettings):
         elif not self.GITHUB_CLIENT_SECRET and self.GITHUB_OAUTH_CLIENT_SECRET:
             self.GITHUB_CLIENT_SECRET = self.GITHUB_OAUTH_CLIENT_SECRET
 
-        # Resolve production redirect URI if running on Render
+        # Resolve production redirect URI if running on Render or if placeholder was configured
         render_url = (os.environ.get("RENDER_EXTERNAL_URL") or "").strip().rstrip("/")
-        if render_url and (not self.GITHUB_OAUTH_REDIRECT_URI or "localhost" in (self.GITHUB_OAUTH_REDIRECT_URI or "")):
-            self.GITHUB_OAUTH_REDIRECT_URI = f"{render_url}/auth/github/callback"
+        raw_redirect = (self.GITHUB_OAUTH_REDIRECT_URI or self.GITHUB_REDIRECT_URI or "").strip()
+        is_placeholder = any(
+            p in raw_redirect.lower()
+            for p in ("your-backend", "localhost", "127.0.0.1", "example.com", "placeholder", "<", ">")
+        )
 
-        # Resolve GITHUB_OAUTH_REDIRECT_URI from GITHUB_REDIRECT_URI or FRONTEND_URL
-        if not self.GITHUB_OAUTH_REDIRECT_URI and self.GITHUB_REDIRECT_URI:
+        if render_url and (not raw_redirect or is_placeholder):
+            self.GITHUB_OAUTH_REDIRECT_URI = f"{render_url}/auth/github/callback"
+        elif is_placeholder and not render_url:
+            # Fallback to known Render deployment domain
+            self.GITHUB_OAUTH_REDIRECT_URI = "https://study-guide-generator-1r0f.onrender.com/auth/github/callback"
+        elif not self.GITHUB_OAUTH_REDIRECT_URI and self.GITHUB_REDIRECT_URI:
             self.GITHUB_OAUTH_REDIRECT_URI = self.GITHUB_REDIRECT_URI
         elif not self.GITHUB_OAUTH_REDIRECT_URI and self.FRONTEND_URL:
             frontend_clean = self.FRONTEND_URL.strip().rstrip("/")

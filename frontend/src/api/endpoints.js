@@ -183,11 +183,22 @@ export const endpoints = {
     return await apiRequest('/api/auth/github/status');
   },
 
-  async getGitHubAuthUrl(customRedirectUri) {
-    const redirectParam = customRedirectUri
-      ? `&redirect_uri=${encodeURIComponent(customRedirectUri)}`
-      : '';
-    return await apiRequest(`/api/auth/github/login?redirect=false${redirectParam}`);
+  async getGitHubAuthUrl(params) {
+    let customRedirectUri = null;
+    let returnTo = null;
+    if (typeof params === 'string') {
+      customRedirectUri = params;
+    } else if (params && typeof params === 'object') {
+      customRedirectUri = params.redirectUri || params.redirect_uri || null;
+      returnTo = params.returnTo || params.return_to || null;
+    }
+    if (!returnTo && typeof window !== 'undefined') {
+      returnTo = window.location.href;
+    }
+    const q = new URLSearchParams({ redirect: 'false' });
+    if (customRedirectUri) q.append('redirect_uri', customRedirectUri);
+    if (returnTo) q.append('return_to', returnTo);
+    return await apiRequest(`/api/auth/github/login?${q.toString()}`);
   },
 
   async postGitHubCallback({ code, state }) {

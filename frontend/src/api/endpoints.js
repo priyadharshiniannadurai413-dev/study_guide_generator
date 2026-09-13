@@ -180,7 +180,7 @@ export const endpoints = {
 
   // GitHub MCP Integration
   async getGitHubStatus() {
-    return await apiRequest('/api/auth/github/status');
+    return await apiRequest('/auth/github/status');
   },
 
   async getGitHubAuthUrl(params) {
@@ -198,18 +198,11 @@ export const endpoints = {
     const q = new URLSearchParams({ redirect: 'false' });
     if (customRedirectUri) q.append('redirect_uri', customRedirectUri);
     if (returnTo) q.append('return_to', returnTo);
-    return await apiRequest(`/api/auth/github/login?${q.toString()}`);
-  },
-
-  async postGitHubCallback({ code, state }) {
-    return await apiRequest('/api/auth/github/callback', {
-      method: 'POST',
-      body: JSON.stringify({ code, state }),
-    });
+    return await apiRequest(`/auth/github/login?${q.toString()}`);
   },
 
   async disconnectGitHub() {
-    return await apiRequest('/api/auth/github/disconnect', {
+    return await apiRequest('/auth/github/disconnect', {
       method: 'POST',
     });
   },

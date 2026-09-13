@@ -29,14 +29,7 @@ logger = logging.getLogger("uvicorn")
 router = APIRouter(prefix="/auth/github", tags=["github-auth"])
 
 
-class GitHubCallbackRequest(BaseModel):
-    """Payload for frontend SPA POST callback."""
-    code: str
-    state: str
-
-
 @router.get("/login")
-@router.get("/login/")
 async def github_login(
     request: Request,
     redirect: bool = Query(
@@ -109,7 +102,6 @@ async def github_login(
 
 
 @router.get("/callback")
-@router.get("/callback/")
 async def github_callback_get(
     code: Optional[str] = Query(default=None, description="Authorization code returned by GitHub"),
     state: Optional[str] = Query(default=None, description="Signed state token returned by GitHub"),
@@ -334,39 +326,6 @@ async def github_callback_get(
     return HTMLResponse(content=html_content, status_code=status.HTTP_200_OK)
 
 
-@router.post("/callback")
-async def github_callback_post(
-    body: GitHubCallbackRequest,
-    current_user: Optional[dict] = Depends(get_current_user),
-):
-    """
-    JSON API endpoint for Single Page Applications (SPAs) posting OAuth code and state.
-    """
-    state_user_id = github_oauth.verify_state(body.state)
-
-    if current_user and current_user.get("sub") != state_user_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="GitHub sign-in state does not match the logged-in user.",
-        )
-
-    access_token, scopes = github_oauth.exchange_code_for_token(body.code)
-    github_login = github_oauth.fetch_github_login(access_token)
-
-    await token_store.save_user_token(
-        user_id=state_user_id,
-        token=access_token,
-        github_login=github_login,
-        scopes=scopes,
-    )
-
-    return {
-        "connected": True,
-        "github_login": github_login,
-        "user_id": state_user_id,
-    }
-
-
 @router.get("/status")
 async def github_status(current_user: dict = Depends(get_current_user)):
     """
@@ -412,10 +371,3 @@ async def github_disconnect(current_user: dict = Depends(get_current_user)):
         "disconnected": deleted,
         "revoked": revoked,
     }
-
-
-# DELETE alias for REST compliance
-@router.delete("/disconnect")
-async def github_disconnect_delete(current_user: dict = Depends(get_current_user)):
-    """Alias for POST /disconnect."""
-    return await github_disconnect(current_user=current_user)

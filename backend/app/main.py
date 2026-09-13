@@ -138,7 +138,6 @@ from app.study_guide.router import router as study_guide_router
 
 # API routes
 app.include_router(github_auth.router)
-app.include_router(github_auth.router, prefix="/api")
 app.include_router(integrations_router)
 app.include_router(tools_router)
 app.include_router(web_research_router)

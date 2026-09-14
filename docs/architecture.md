@@ -34,55 +34,55 @@ flowchart TB
     User([Student / User])
 
     subgraph FrontendLayer ["Frontend (React 19 + Vite)"]
-        UI[React UI Components]
-        AuthUI[Clerk Auth & AuthContext]
-        APIClient[client.js + endpoints.js API Layer]
+        UI["React UI Components"]
+        AuthUI["Clerk Auth & AuthContext"]
+        APIClient["client.js + endpoints.js API Layer"]
     end
 
     subgraph GatewayLayer ["Backend Gateway (FastAPI)"]
-        API[FastAPI Application: main.py]
-        AuthDep[app.auth.dependencies.get_current_user]
-        Routers[Route Handlers: documents, study, github_auth, integrations, tools, web_research, voice, llm]
+        API["FastAPI Application: main.py"]
+        AuthDep["app.auth.dependencies.get_current_user"]
+        Routers["Route Handlers: documents, study, github_auth, integrations, tools, web_research, voice, llm"]
     end
 
     subgraph ServicesLayer ["Application & Agent Services"]
-        SupervisorAgent[Supervisor LangGraph Orchestrator]
-        StudyGenService[study_generator.py & summarizer.py]
-        EvaluationService[evaluation_service.py: 2-Mark Exam Engine]
-        SpeechService[speech_service.py: Voice STT / TTS]
-        ExportService[export_service.py: PDF / DOCX / CSV Export]
+        SupervisorAgent["Supervisor LangGraph Orchestrator"]
+        StudyGenService["study_generator.py and summarizer.py"]
+        EvaluationService["evaluation_service.py: 2-Mark Exam Engine"]
+        SpeechService["speech_service.py: Voice STT / TTS"]
+        ExportService["export_service.py: PDF / DOCX / CSV Export"]
     end
 
     subgraph RAGLayer ["Two-Tier Hybrid RAG Subsystem"]
-        RAGRetriever[app.rag: Hybrid & User Doc Retrievers]
-        Embeddings[GoogleGenerativeAIEmbeddings: 384 dims]
-        DocLoader[pypdf + pdfplumber Loaders & Chunker]
+        RAGRetriever["app.rag: Hybrid & User Doc Retrievers"]
+        Embeddings["GoogleGenerativeAIEmbeddings: 384 dims"]
+        DocLoader["pypdf and pdfplumber Loaders & Chunker"]
     end
 
     subgraph DataLayer ["Persistence (MongoDB Atlas)"]
-        MongoDB[(MongoDB Atlas Database)]
-        SyllabusColl[(syllabus_vectors: Global Syllabus)]
-        UserDocColl[(user_documents: Isolated User Chunks)]
-        TokensColl[(github_tokens: Encrypted OAuth Credentials)]
+        MongoDB[("MongoDB Atlas Database")]
+        SyllabusColl[("syllabus_vectors: Global Syllabus")]
+        UserDocColl[("user_documents: Isolated User Chunks")]
+        TokensColl[("github_tokens: Encrypted OAuth Credentials")]
     end
 
     subgraph MCPLayer ["Model Context Protocol & Web Readers"]
-        FetchMCPClient[Fetch MCP: httpx Web Reader]
-        JinaProxy[r.jina.ai Reader Proxy Fallback]
-        GitHubMCPClient[GitHub Copilot MCP & REST Tools]
+        FetchMCPClient["Fetch MCP: httpx Web Reader"]
+        JinaProxy["r.jina.ai Reader Proxy Fallback"]
+        GitHubMCPClient["GitHub Copilot MCP & REST Tools"]
     end
 
     subgraph LLMLayer ["LLM Inference Engine (Multi-Tier Failover)"]
-        PrimaryLLM[Primary: Mistral Small]
-        Fallback1[Fallback 1: Groq gpt-oss-20b]
-        Fallback2[Fallback 2: Google Gemini 3.5 Flash Lite]
+        PrimaryLLM["Primary: Mistral Small"]
+        Fallback1["Fallback 1: Groq gpt-oss-20b"]
+        Fallback2["Fallback 2: Google Gemini 3.5 Flash Lite"]
     end
 
     subgraph ExternalIdentity ["External Auth & Voice Engines"]
-        ClerkAccounts[Clerk Identity Service: JWKS]
-        GitHubAPI[GitHub REST / OAuth API]
-        EdgeTTSSvc[Microsoft Edge TTS Engine]
-        GroqWhisperSvc[Groq Whisper API]
+        ClerkAccounts["Clerk Identity Service: JWKS"]
+        GitHubAPI["GitHub REST / OAuth API"]
+        EdgeTTSSvc["Microsoft Edge TTS Engine"]
+        GroqWhisperSvc["Groq Whisper API"]
     end
 
     %% Connections
@@ -102,7 +102,8 @@ flowchart TB
     Routers --> ExportService
     Routers --> DocLoader
     
-    DocLoader --> Embeddings --> UserDocColl
+    DocLoader --> Embeddings
+    Embeddings --> UserDocColl
     
     SupervisorAgent --> RAGRetriever
     StudyGenService --> RAGRetriever
@@ -112,11 +113,15 @@ flowchart TB
     RAGRetriever --> UserDocColl
     RAGRetriever --> Embeddings
     
-    SupervisorAgent --> FetchMCPClient --> JinaProxy
-    SupervisorAgent --> GitHubMCPClient --> GitHubAPI
+    SupervisorAgent --> FetchMCPClient
+    FetchMCPClient --> JinaProxy
+    SupervisorAgent --> GitHubMCPClient
+    GitHubMCPClient --> GitHubAPI
     Routers --> TokensColl
     
-    SupervisorAgent & StudyGenService & EvaluationService --> PrimaryLLM
+    SupervisorAgent --> PrimaryLLM
+    StudyGenService --> PrimaryLLM
+    EvaluationService --> PrimaryLLM
     PrimaryLLM -.->|failover| Fallback1
     Fallback1 -.->|failover| Fallback2
     
@@ -134,49 +139,58 @@ flowchart TB
 
 ```mermaid
 flowchart TD
-    IndexHTML[index.html] --> MainJSX[src/main.jsx]
-    MainJSX --> ClerkProviderWrapper[ClerkProvider: VITE_CLERK_PUBLISHABLE_KEY]
-    ClerkProviderWrapper --> AppRoot[src/App.jsx]
+    IndexHTML["index.html"] --> MainJSX["src/main.jsx"]
+    MainJSX --> ClerkProviderWrapper["ClerkProvider: VITE_CLERK_PUBLISHABLE_KEY"]
+    ClerkProviderWrapper --> AppRoot["src/App.jsx"]
     
-    AppRoot --> AuthProviderContext[src/context/AuthContext.jsx]
-    AuthProviderContext --> ToastProviderContext[src/context/ToastContext.jsx]
-    ToastProviderContext --> AppContent[AppContent Component]
+    AppRoot --> AuthProviderContext["src/context/AuthContext.jsx"]
+    AuthProviderContext --> ToastProviderContext["src/context/ToastContext.jsx"]
+    ToastProviderContext --> AppContent["AppContent Component"]
     
-    AppContent --> AuthGateCheck{Clerk Auth State}
-    AuthGateCheck -- SignedOut --> SignedOutGate[Clerk SignIn / SignUp Modal & Landing Screen]
-    AuthGateCheck -- SignedIn --> AuthenticatedApp[Navbar + Active Tab Router + Footer]
+    AppContent --> AuthGateCheck{"Clerk Auth State"}
+    AuthGateCheck -- "SignedOut" --> SignedOutGate["Clerk SignIn / SignUp Modal & Landing Screen"]
+    AuthGateCheck -- "SignedIn" --> AuthenticatedApp["Navbar + Active Tab Router + Footer"]
     
-    AuthenticatedApp --> TabRouter{activeTab State}
+    AuthenticatedApp --> TabRouter{"activeTab State"}
     
-    TabRouter --> DashboardTab[src/pages/DashboardPage.jsx]
-    TabRouter --> ChatTab[src/pages/ChatPage.jsx]
-    TabRouter --> DocsTab[src/pages/DocumentsPage.jsx]
-    TabRouter --> NotesTab[src/pages/StudyNotesPage.jsx]
-    TabRouter --> QuizTab[src/pages/QuizPage.jsx]
-    TabRouter --> TestTab[src/components/study/TwoMarkTestArena.tsx]
-    TabRouter --> WorkbenchTab[src/components/github/GitHubWorkbench.tsx]
-    TabRouter --> MCPTab[src/components/mcp/MCPConnectorsHub.tsx]
+    TabRouter --> DashboardTab["src/pages/DashboardPage.jsx"]
+    TabRouter --> ChatTab["src/pages/ChatPage.jsx"]
+    TabRouter --> DocsTab["src/pages/DocumentsPage.jsx"]
+    TabRouter --> NotesTab["src/pages/StudyNotesPage.jsx"]
+    TabRouter --> QuizTab["src/pages/QuizPage.jsx"]
+    TabRouter --> TestTab["src/components/study/TwoMarkTestArena.tsx"]
+    TabRouter --> WorkbenchTab["src/components/github/GitHubWorkbench.tsx"]
+    TabRouter --> MCPTab["src/components/mcp/MCPConnectorsHub.tsx"]
     
     %% Reusable Components
-    ChatTab --> DocSelChat[DocumentSelector.jsx]
-    ChatTab --> VoiceRec[VoiceRecorder.jsx]
-    ChatTab --> AudPlayer[AudioPlayer.jsx]
+    ChatTab --> DocSelChat["DocumentSelector.jsx"]
+    ChatTab --> VoiceRec["VoiceRecorder.jsx"]
+    ChatTab --> AudPlayer["AudioPlayer.jsx"]
     
-    NotesTab --> DocSelNotes[DocumentSelector.jsx]
-    NotesTab --> DocViewer[StudyDocumentViewer.tsx]
+    NotesTab --> DocSelNotes["DocumentSelector.jsx"]
+    NotesTab --> DocViewer["StudyDocumentViewer.tsx"]
     
-    QuizTab --> DocSelQuiz[DocumentSelector.jsx]
-    QuizTab --> MCQArenaView[MCQArena.tsx]
+    QuizTab --> DocSelQuiz["DocumentSelector.jsx"]
+    QuizTab --> MCQArenaView["MCQArena.tsx"]
     
-    MCPTab --> GHCard[GitHubConnectorCard.tsx]
-    MCPTab --> FetchCard[FetchConnectorCard.tsx]
+    MCPTab --> GHCard["GitHubConnectorCard.tsx"]
+    MCPTab --> FetchCard["FetchConnectorCard.tsx"]
     
     %% Client Layer
-    DashboardTab & ChatTab & DocsTab & NotesTab & QuizTab & TestTab & WorkbenchTab & MCPTab --> EndpointsAPI[src/api/endpoints.js]
-    ChatTab --> SSEStreamClient[streamChatResponse in src/api/client.js]
-    EndpointsAPI --> FetchClient[apiRequest in src/api/client.js]
+    DashboardTab --> EndpointsAPI["src/api/endpoints.js"]
+    ChatTab --> EndpointsAPI
+    DocsTab --> EndpointsAPI
+    NotesTab --> EndpointsAPI
+    QuizTab --> EndpointsAPI
+    TestTab --> EndpointsAPI
+    WorkbenchTab --> EndpointsAPI
+    MCPTab --> EndpointsAPI
+
+    ChatTab --> SSEStreamClient["streamChatResponse in src/api/client.js"]
+    EndpointsAPI --> FetchClient["apiRequest in src/api/client.js"]
     
-    FetchClient & SSEStreamClient -->|HTTP / SSE with Auto JWT Refresh| FastAPIBackend[FastAPI Backend Server]
+    FetchClient -->|HTTP with Auto JWT Refresh| FastAPIBackend["FastAPI Backend Server"]
+    SSEStreamClient -->|SSE with Auto JWT Refresh| FastAPIBackend
 ```
 
 ---
@@ -185,44 +199,56 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    ServerRunner[server.py: Auto venv detection & port binding] --> MainApp[app/main.py: FastAPI Application]
+    ServerRunner["server.py: Auto venv detection & port binding"] --> MainApp["app/main.py: FastAPI Application"]
     
-    MainApp --> Lifespan[app.main.lifespan: Startup / Shutdown Context]
-    Lifespan --> MongoConn[connect_to_mongo: AsyncIOMotorClient & Index Init]
+    MainApp --> Lifespan["app.main.lifespan: Startup / Shutdown Context"]
+    Lifespan --> MongoConn["connect_to_mongo: AsyncIOMotorClient & Index Init"]
     
-    MainApp --> MiddlewareLayer[FastAPI Middleware & Exception Handlers]
-    MiddlewareLayer --> CORSMiddleware[CORSMiddleware: Origins localhost 3000/5173, Vercel]
-    MiddlewareLayer --> ValidationHandler[validation_exception_handler: RequestValidationError]
-    MiddlewareLayer --> StaticMount[StaticFiles Mount: /outputs]
+    MainApp --> MiddlewareLayer["FastAPI Middleware & Exception Handlers"]
+    MiddlewareLayer --> CORSMiddleware["CORSMiddleware: Origins localhost 3000/5173, Vercel"]
+    MiddlewareLayer --> ValidationHandler["validation_exception_handler: RequestValidationError"]
+    MiddlewareLayer --> StaticMount["StaticFiles Mount: /outputs"]
     
-    MainApp --> IncludedRouters[Included APIRouters]
-    IncludedRouters --> R_Docs[app.routes.documents: /api/documents]
-    IncludedRouters --> R_Study[app.routes.study: /api/study]
-    IncludedRouters --> R_GHAuth[app.routes.github_auth: /auth/github]
-    IncludedRouters --> R_Integrations[app.routes.integrations: /api/integrations]
-    IncludedRouters --> R_Tools[app.routes.tools: /api/tools]
-    IncludedRouters --> R_Web[app.routes.web_research: /api/web]
-    IncludedRouters --> R_Voice[app.routes.voice: /api/voice]
-    IncludedRouters --> R_LLM[app.routes.llm: /api/chat/*, /chatbot]
-    IncludedRouters --> R_StudyGuide[app.study_guide.router: /study-guide/upload]
+    MainApp --> IncludedRouters["Included APIRouters"]
+    IncludedRouters --> R_Docs["app.routes.documents: /api/documents"]
+    IncludedRouters --> R_Study["app.routes.study: /api/study"]
+    IncludedRouters --> R_GHAuth["app.routes.github_auth: /auth/github"]
+    IncludedRouters --> R_Integrations["app.routes.integrations: /api/integrations"]
+    IncludedRouters --> R_Tools["app.routes.tools: /api/tools"]
+    IncludedRouters --> R_Web["app.routes.web_research: /api/web"]
+    IncludedRouters --> R_Voice["app.routes.voice: /api/voice"]
+    IncludedRouters --> R_LLM["app.routes.llm: /api/chat/*, /chatbot"]
+    IncludedRouters --> R_StudyGuide["app.study_guide.router: /study-guide/upload"]
     
-    R_Docs & R_Study & R_GHAuth & R_Integrations & R_Tools & R_Web & R_LLM --> AuthDependency[app.auth.dependencies.get_current_user]
-    AuthDependency --> ClerkVerifier[app.auth.clerk.verify_clerk_token: RS256 JWKS Cache]
+    R_Docs --> AuthDependency["app.auth.dependencies.get_current_user"]
+    R_Study --> AuthDependency
+    R_GHAuth --> AuthDependency
+    R_Integrations --> AuthDependency
+    R_Tools --> AuthDependency
+    R_Web --> AuthDependency
+    R_LLM --> AuthDependency
+
+    AuthDependency --> ClerkVerifier["app.auth.clerk.verify_clerk_token: RS256 JWKS Cache"]
     
-    R_LLM & R_Study --> ChatCoordinator[app.ai.chat_service.ChatService: LangGraph Invocation]
-    ChatCoordinator --> SupervisorGraph[app.ai.agents.supervisor.graph.get_supervisor_graph]
+    R_LLM --> ChatCoordinator["app.ai.chat_service.ChatService: LangGraph Invocation"]
+    R_Study --> ChatCoordinator
+
+    ChatCoordinator --> SupervisorGraph["app.ai.agents.supervisor.graph.get_supervisor_graph"]
     
-    R_Study --> DirectStudyGen[app.services.study_generator]
-    R_Study --> EvalService[app.services.evaluation_service]
-    R_Study --> ExportService[app.services.export_service]
-    R_StudyGuide --> MapReduceSummarizer[app.study_guide.summarizer & mcq_generator]
-    R_Voice --> SpeechService[app.services.speech_service]
+    R_Study --> DirectStudyGen["app.services.study_generator"]
+    R_Study --> EvalService["app.services.evaluation_service"]
+    R_Study --> ExportService["app.services.export_service"]
+    R_StudyGuide --> MapReduceSummarizer["app.study_guide.summarizer & mcq_generator"]
+    R_Voice --> SpeechService["app.services.speech_service"]
     
-    R_Docs --> UserDocService[app.rag.user_doc_service]
-    ChatCoordinator & DirectStudyGen & EvalService --> RAGModule[app.rag: user_doc_retriever & vector_store]
+    R_Docs --> UserDocService["app.rag.user_doc_service"]
+    ChatCoordinator --> RAGModule["app.rag: user_doc_retriever & vector_store"]
+    DirectStudyGen --> RAGModule
+    EvalService --> RAGModule
     
-    RAGModule --> MongoModule[app.db.mongodb: AsyncIOMotorClient]
-    R_GHAuth & R_Integrations --> TokenStoreModule[app.db.token_store: Fernet Encrypted Storage]
+    RAGModule --> MongoModule["app.db.mongodb: AsyncIOMotorClient"]
+    R_GHAuth --> TokenStoreModule["app.db.token_store: Fernet Encrypted Storage"]
+    R_Integrations --> TokenStoreModule
 ```
 
 ---
@@ -232,57 +258,63 @@ flowchart TD
 ```mermaid
 flowchart TD
     subgraph IngestionSubsystem ["1. Ingestion & Preprocessing Subsystem"]
-        InputPDF[Uploaded PDF Document] --> LoaderSelect{Loader Pipeline}
-        LoaderSelect --> FastPyPDF[pypdf: Fast Native Extractor]
-        FastPyPDF -.->|fallback on table error| PDFPlumber[pdfplumber: Structured Table Parser]
+        InputPDF["Uploaded PDF Document"] --> LoaderSelect{"Loader Pipeline"}
+        LoaderSelect --> FastPyPDF["pypdf: Fast Native Extractor"]
+        FastPyPDF -.->|fallback on table error| PDFPlumber["pdfplumber: Structured Table Parser"]
         
-        FastPyPDF & PDFPlumber --> RawPages[Raw Extracted Pages: text & tables]
-        RawPages --> FrontMatterFilter[is_front_matter: Filter copyright, license, ISBN, TOC]
-        FrontMatterFilter --> CleanPages[Substantive Academic Pages]
+        FastPyPDF --> RawPages["Raw Extracted Pages: text & tables"]
+        PDFPlumber --> RawPages
+
+        RawPages --> FrontMatterFilter["is_front_matter: Filter copyright, license, ISBN, TOC"]
+        FrontMatterFilter --> CleanPages["Substantive Academic Pages"]
         
-        CleanPages --> StructureChunker[chunk_document: RecursiveCharacterTextSplitter chunk_size=800, overlap=100]
-        StructureChunker --> TablePreservation[Preserve table blocks whole as contiguous units]
-        TablePreservation --> ChunkMeta[Attach Metadata: user_id, doc_id, filename, chunk_id, page_number]
+        CleanPages --> StructureChunker["chunk_document: RecursiveCharacterTextSplitter chunk_size=800, overlap=100"]
+        StructureChunker --> TablePreservation["Preserve table blocks whole as contiguous units"]
+        TablePreservation --> ChunkMeta["Attach Metadata: user_id, doc_id, filename, chunk_id, page_number"]
         
-        ChunkMeta --> BatchEmbedder[embed_texts in app.rag.embedding: Batch size 64]
-        BatchEmbedder --> GoogleEmbedAPI[GoogleGenerativeAIEmbeddings: models/gemini-embedding-001 output_dim=384]
-        GoogleEmbedAPI --> UpsertChunks[Insert into MongoDB 'user_documents']
+        ChunkMeta --> BatchEmbedder["embed_texts in app.rag.embedding: Batch size 64"]
+        BatchEmbedder --> GoogleEmbedAPI["GoogleGenerativeAIEmbeddings: models/gemini-embedding-001 output_dim=384"]
+        GoogleEmbedAPI --> UpsertChunks["Insert into MongoDB user_documents"]
     end
 
     subgraph TwoTierRetrievalSubsystem ["2. Two-Tier Retrieval Subsystem"]
-        QueryInput[Search Query / Topic Focus] --> TargetRouter{Target Document}
+        QueryInput["Search Query / Topic Focus"] --> TargetRouter{"Target Document"}
         
         %% Tier 1
-        TargetRouter -- "doc_id == 'syllabus'" --> Tier1Retriever[app.rag.vector_store.VectorStore]
-        Tier1Retriever --> EmbedQ1[embed_query: 384-dim Gemini vector]
-        EmbedQ1 --> AtlasVectorSearch[$vectorSearch on syllabus_vector_index top_k=10]
-        Tier1Retriever --> AtlasTextSearch[$text keyword search on syllabus_text_index top_k=10]
-        AtlasVectorSearch & AtlasTextSearch --> RRFAlgorithm[merge_rrf: Reciprocal Rank Fusion k=60]
-        RRFAlgorithm --> Tier1Results[Top 5 Ranked Syllabus Chunks]
+        TargetRouter -- "doc_id == 'syllabus'" --> Tier1Retriever["app.rag.vector_store.VectorStore"]
+        Tier1Retriever --> EmbedQ1["embed_query: 384-dim Gemini vector"]
+        EmbedQ1 --> AtlasVectorSearch["vectorSearch on syllabus_vector_index top_k=10"]
+        Tier1Retriever --> AtlasTextSearch["text keyword search on syllabus_text_index top_k=10"]
+        AtlasVectorSearch --> RRFAlgorithm["merge_rrf: Reciprocal Rank Fusion k=60"]
+        AtlasTextSearch --> RRFAlgorithm
+        RRFAlgorithm --> Tier1Results["Top 5 Ranked Syllabus Chunks"]
         
         %% Tier 2
-        TargetRouter -- "doc_id == User UUID" --> Tier2Retriever[app.rag.user_doc_retriever.get_user_doc_context]
-        Tier2Retriever --> GenericCheck{Is query generic / summary?}
-        GenericCheck -- Yes --> DirectSequentialChunks[_direct_chunk_fetch: Chunks ordered by page_number]
-        GenericCheck -- No --> EmbedQ2[embed_query: 384-dim Gemini vector]
-        EmbedQ2 --> UserAtlasSearch[_atlas_vector_search: $vectorSearch with user_id + doc_id pre-filters]
-        UserAtlasSearch -.->|fallback if Atlas search unindexed| UserInMemSearch[_in_memory_similarity_search: Cosine Similarity]
+        TargetRouter -- "doc_id == User UUID" --> Tier2Retriever["app.rag.user_doc_retriever.get_user_doc_context"]
+        Tier2Retriever --> GenericCheck{"Is query generic or summary?"}
+        GenericCheck -- "Yes" --> DirectSequentialChunks["direct_chunk_fetch: Chunks ordered by page_number"]
+        GenericCheck -- "No" --> EmbedQ2["embed_query: 384-dim Gemini vector"]
+        EmbedQ2 --> UserAtlasSearch["atlas_vector_search: vectorSearch with user_id and doc_id pre-filters"]
+        UserAtlasSearch -.->|fallback if Atlas search unindexed| UserInMemSearch["in_memory_similarity_search: Cosine Similarity"]
         UserInMemSearch -.->|fallback if empty| DirectSequentialChunks
-        UserAtlasSearch & UserInMemSearch & DirectSequentialChunks --> Tier2Results[Top 8 Tenant-Isolated Chunks]
+        UserAtlasSearch --> Tier2Results["Top 8 Tenant-Isolated Chunks"]
+        UserInMemSearch --> Tier2Results
+        DirectSequentialChunks --> Tier2Results
     end
 
     subgraph PromptAndLLMGeneration ["3. Prompt Construction & Generation"]
-        Tier1Results & Tier2Results --> FormatChunks[format_user_doc_context: Format with [Excerpt i | Page p]]
-        FormatChunks --> ContextEvaluation[context_evaluator.py: evaluate_context_sufficiency]
-        ContextEvaluation --> WebEnrichDecision{Web Enrichment Needed?}
-        WebEnrichDecision -- Yes --> FetchMCPNode[fetch_web_node: Fetch MCP Reader]
-        FetchMCPNode --> SourceValidatorNode[validate_web_node: Academic Quality Scoring]
-        SourceValidatorNode --> CombinedEvidence[format_combined_evidence: Merge RAG + Web Context]
-        WebEnrichDecision -- No --> CombinedEvidence
+        Tier1Results --> FormatChunks["format_user_doc_context: Format with Excerpt i and Page p"]
+        Tier2Results --> FormatChunks
+        FormatChunks --> ContextEvaluation["context_evaluator.py: evaluate_context_sufficiency"]
+        ContextEvaluation --> WebEnrichDecision{"Web Enrichment Needed?"}
+        WebEnrichDecision -- "Yes" --> FetchMCPNode["fetch_web_node: Fetch MCP Reader"]
+        FetchMCPNode --> SourceValidatorNode["validate_web_node: Academic Quality Scoring"]
+        SourceValidatorNode --> CombinedEvidence["format_combined_evidence: Merge RAG + Web Context"]
+        WebEnrichDecision -- "No" --> CombinedEvidence
         
-        CombinedEvidence --> PromptAssembly[Assemble Specialist Agent Prompt with Context]
-        PromptAssembly --> CentralLLM[get_llm_with_fallback: Mistral Small -> Groq -> Gemini]
-        CentralLLM --> StructuredOrStream[Deliver Final Study Guide / Notes / Quiz / Answer]
+        CombinedEvidence --> PromptAssembly["Assemble Specialist Agent Prompt with Context"]
+        PromptAssembly --> CentralLLM["get_llm_with_fallback: Mistral Small to Groq to Gemini"]
+        CentralLLM --> StructuredOrStream["Deliver Final Study Guide / Notes / Quiz / Answer"]
     end
 ```
 
@@ -293,44 +325,48 @@ flowchart TD
 ```mermaid
 flowchart TD
     subgraph SupervisorStateGraph ["Supervisor LangGraph (app/ai/agents/supervisor/graph.py)"]
-        START_NODE([START]) --> RouterNode[router_node: Hybrid Regex + Gemini Flash Classifier]
+        START_NODE(["START"]) --> RouterNode["router_node: Hybrid Regex + Gemini Flash Classifier"]
         
-        RouterNode -->|Intent == 'curriculum'| CurricSubgraph[curriculum Subgraph]
-        RouterNode -->|Intent == 'study_notes'| NotesSubgraph[study_notes Subgraph]
-        RouterNode -->|Intent == 'mcq'| MCQSubgraph[mcq Subgraph]
-        RouterNode -->|Intent == 'github'| GHAgentNode[github_agent_node]
-        RouterNode -->|Intent == 'direct_answer'| DirectNode[direct_answer_node]
+        RouterNode -->|Intent == 'curriculum'| CurricSubgraph["curriculum Subgraph"]
+        RouterNode -->|Intent == 'study_notes'| NotesSubgraph["study_notes Subgraph"]
+        RouterNode -->|Intent == 'mcq'| MCQSubgraph["mcq Subgraph"]
+        RouterNode -->|Intent == 'github'| GHAgentNode["github_agent_node"]
+        RouterNode -->|Intent == 'direct_answer'| DirectNode["direct_answer_node"]
         
-        CurricSubgraph & NotesSubgraph & MCQSubgraph & GHAgentNode & DirectNode --> FinalizerNode[finalize_response]
-        FinalizerNode --> END_NODE([END])
+        CurricSubgraph --> FinalizerNode["finalize_response"]
+        NotesSubgraph --> FinalizerNode
+        MCQSubgraph --> FinalizerNode
+        GHAgentNode --> FinalizerNode
+        DirectNode --> FinalizerNode
+        FinalizerNode --> END_NODE(["END"])
     end
 
     subgraph SpecialistSubgraphDetail ["Specialist Subgraph Internal Architecture"]
-        SubStart([Subgraph START]) --> RetrieveContextNode[retrieve_context: Fetch RAG context]
-        RetrieveContextNode --> EvalContextNode[evaluate_context_node: Sufficiency & URL detector]
-        EvalContextNode --> RouteDecision{route_after_evaluation}
+        SubStart(["Subgraph START"]) --> RetrieveContextNode["retrieve_context: Fetch RAG context"]
+        RetrieveContextNode --> EvalContextNode["evaluate_context_node: Sufficiency & URL detector"]
+        EvalContextNode --> RouteDecision{"route_after_evaluation"}
         
-        RouteDecision -- "generate (Sufficient)" --> GenNode[generate_answer / generate_notes / generate_mcqs]
-        RouteDecision -- "fetch_web (Insufficient / URL)" --> FetchWebNode[fetch_web_node: Call FetchMCPService]
-        FetchWebNode --> ValidateWebNode[validate_web_node: Filter ads & score credibility]
+        RouteDecision -- "generate (Sufficient)" --> GenNode["generate_answer / generate_notes / generate_mcqs"]
+        RouteDecision -- "fetch_web (Insufficient / URL)" --> FetchWebNode["fetch_web_node: Call FetchMCPService"]
+        FetchWebNode --> ValidateWebNode["validate_web_node: Filter ads & score credibility"]
         ValidateWebNode --> GenNode
-        GenNode --> SubEnd([Subgraph END])
+        GenNode --> SubEnd(["Subgraph END"])
     end
 
     subgraph ToolRegistry ["Tool Connectors & Helpers"]
-        GHAgentNode --> GHToolsModule[app.tools.github_tools.create_user_github_tools]
-        GHToolsModule --> GH_SearchRepos[github_search_repositories]
-        GHToolsModule --> GH_ListRepos[github_list_repositories]
-        GHToolsModule --> GH_GetRepo[github_get_repository]
-        GHToolsModule --> GH_GetFile[github_get_file_contents]
-        GHToolsModule --> GH_ListCommits[github_list_commits]
-        GHToolsModule --> GH_SearchCode[github_search_code]
+        GHAgentNode --> GHToolsModule["app.tools.github_tools.create_user_github_tools"]
+        GHToolsModule --> GH_SearchRepos["github_search_repositories"]
+        GHToolsModule --> GH_ListRepos["github_list_repositories"]
+        GHToolsModule --> GH_GetRepo["github_get_repository"]
+        GHToolsModule --> GH_GetFile["github_get_file_contents"]
+        GHToolsModule --> GH_ListCommits["github_list_commits"]
+        GHToolsModule --> GH_SearchCode["github_search_code"]
         
-        FetchWebNode --> FetchMCPService[app.ai.mcp_service.FetchMCPService]
-        FetchMCPService --> HTTPXEngine[httpx.AsyncClient + html2text]
-        FetchMCPService --> JinaFallback[r.jina.ai Reader Proxy]
+        FetchWebNode --> FetchMCPService["app.ai.mcp_service.FetchMCPService"]
+        FetchMCPService --> HTTPXEngine["httpx.AsyncClient + html2text"]
+        FetchMCPService --> JinaFallback["r.jina.ai Reader Proxy"]
         
-        GHAgentNode --> GH_MCP_Client[app.services.mcp_client.get_github_mcp_tools: 32 Copilot Tools]
+        GHAgentNode --> GH_MCP_Client["app.services.mcp_client.get_github_mcp_tools: 32 Copilot Tools"]
     end
 ```
 
@@ -369,7 +405,7 @@ erDiagram
         ObjectId _id PK "MongoDB Record ID"
         string chunk_id "Global Syllabus Chunk ID"
         string text "Syllabus Text / Unit Definition"
-        string chunk_type "programme_outcome | semester_table | unit_content"
+        string chunk_type "programme_outcome / semester_table / unit_content"
         int semester "Semester Number (1-8)"
         string course_code "Course Code (e.g. 21CS301)"
         boolean is_global "true (shared across all users)"
@@ -383,7 +419,7 @@ erDiagram
         string clerk_user_id UK "Clerk User ID Unique Index"
         string encrypted_token "AES-Fernet Encrypted Access Token"
         string github_login "Connected GitHub Username"
-        string scopes "OAuth / PAT Scopes (repo, read:user)"
+        string scopes "OAuth / PAT Scopes: repo, read:user"
         datetime connected_at "Timestamp UTC"
     }
 ```
@@ -440,31 +476,31 @@ The following table documents all **37 endpoints** implemented across the FastAP
 
 ```mermaid
 flowchart LR
-    App[AI Study Assistant Core]
+    App["AI Study Assistant Core"]
     
     subgraph IdentityService ["1. Identity & Auth"]
-        Clerk[Clerk Identity Platform: Session JWTs & JWKS Public Keys]
+        Clerk["Clerk Identity Platform: Session JWTs & JWKS Public Keys"]
     end
 
     subgraph DatabaseCloud ["2. Managed Persistence & Search"]
-        Atlas[MongoDB Atlas: Vector Search & Documents]
+        Atlas[("MongoDB Atlas: Vector Search & Documents")]
     end
 
     subgraph LLMProviders ["3. LLM & Inference Providers"]
-        MistralAI[Mistral AI: mistral-small-latest]
-        GroqCloud[Groq Cloud: openai/gpt-oss-20b]
-        GoogleAI[Google Generative AI: Gemini 3.5 Flash Lite & Gemini Embeddings]
+        MistralAI["Mistral AI: mistral-small-latest"]
+        GroqCloud["Groq Cloud: openai/gpt-oss-20b"]
+        GoogleAI["Google Generative AI: Gemini 3.5 Flash Lite & Gemini Embeddings"]
     end
 
     subgraph SpeechServices ["4. Voice & Speech Subsystems"]
-        WhisperAPI[Groq Whisper API: whisper-large-v3]
-        EdgeTTSAPI[Microsoft Edge TTS: en-US-JennyNeural]
+        WhisperAPI["Groq Whisper API: whisper-large-v3"]
+        EdgeTTSAPI["Microsoft Edge TTS: en-US-JennyNeural"]
     end
 
     subgraph ExternalWebAndCode ["5. External Web & Code Resources"]
-        GitHub[GitHub REST API & Copilot MCP]
-        JinaReader[Jina AI Reader Proxy: r.jina.ai]
-        TavilySearch[Tavily Search API]
+        GitHub["GitHub REST API & Copilot MCP"]
+        JinaReader["Jina AI Reader Proxy: r.jina.ai"]
+        TavilySearch["Tavily Search API"]
     end
 
     App <--> Clerk
@@ -486,28 +522,28 @@ flowchart LR
 ```mermaid
 flowchart TD
     subgraph InboundSecurity ["1. Inbound Network & Auth Security"]
-        Req[Client Request] --> CORS[CORS Middleware: Strict Origin Whitelist & Regex]
-        CORS --> RateLimitCheck[Input Sanitization & Buffer Size Limit: 50MB]
-        RateLimitCheck --> AuthDep[HTTPBearer: get_current_user Dependency]
-        AuthDep --> JWKS[Clerk RS256 Verification with In-Memory Key Cache 1hr]
+        Req["Client Request"] --> CORS["CORS Middleware: Strict Origin Whitelist & Regex"]
+        CORS --> RateLimitCheck["Input Sanitization & Buffer Size Limit: 50MB"]
+        RateLimitCheck --> AuthDep["HTTPBearer: get_current_user Dependency"]
+        AuthDep --> JWKS["Clerk RS256 Verification with In-Memory Key Cache 1hr"]
     end
 
     subgraph TokenEncryption ["2. Credentials Encryption (At Rest)"]
-        GH_Token[Student GitHub OAuth Token / PAT] --> FernetKey[TOKEN_ENCRYPTION_KEY: 256-bit AES Fernet]
-        FernetKey --> EncryptedString[Encrypted Ciphertext Stored in MongoDB github_tokens]
-        EncryptedString --> DecryptOnDemand[Decrypted in memory ONLY during active tool calls]
+        GH_Token["Student GitHub OAuth Token / PAT"] --> FernetKey["TOKEN_ENCRYPTION_KEY: 256-bit AES Fernet"]
+        FernetKey --> EncryptedString["Encrypted Ciphertext Stored in MongoDB github_tokens"]
+        EncryptedString --> DecryptOnDemand["Decrypted in memory ONLY during active tool calls"]
     end
 
     subgraph TenantIsolation ["3. Tenant Boundary Enforcement"]
-        DecodedUser[current_user sub] --> DocTag[Stamp all uploaded chunks with user_id]
-        DecodedUser --> RAGFilter[Hard Filter: {'user_id': current_user.sub, 'doc_id': doc_id}]
-        RAGFilter --> PreventLeakage[Cross-tenant data access strictly impossible]
+        DecodedUser["current_user sub"] --> DocTag["Stamp all uploaded chunks with user_id"]
+        DecodedUser --> RAGFilter["Hard Filter: user_id = current_user.sub and doc_id = doc_id"]
+        RAGFilter --> PreventLeakage["Cross-tenant data access strictly impossible"]
     end
 
     subgraph SSRFProtection ["4. Web Reader SSRF Defense"]
-        TargetURL[External Web URL] --> URLValidator[validate_public_url in web_content_service.py]
-        URLValidator --> IPBlock[Block localhost, 127.0.0.1, private RFC-1918 subnets, cloud metadata]
-        URLValidator --> SchemeCheck[Enforce HTTP / HTTPS scheme only]
+        TargetURL["External Web URL"] --> URLValidator["validate_public_url in web_content_service.py"]
+        URLValidator --> IPBlock["Block localhost, 127.0.0.1, private RFC-1918 subnets, cloud metadata"]
+        URLValidator --> SchemeCheck["Enforce HTTP / HTTPS scheme only"]
     end
 ```
 
@@ -518,28 +554,28 @@ flowchart TD
 ```mermaid
 flowchart LR
     subgraph ClientHosting ["Vercel Edge Network (Frontend)"]
-        UserBrowser[User Browser] --> VercelCDN[Vercel Global CDN]
-        VercelCDN --> ReactBundle[Compiled React 19 Vite Static Bundle]
-        ReactBundle --> VercelRouting[vercel.json: SPA Rewrites /* -> /index.html]
+        UserBrowser["User Browser"] --> VercelCDN["Vercel Global CDN"]
+        VercelCDN --> ReactBundle["Compiled React 19 Vite Static Bundle"]
+        ReactBundle --> VercelRouting["vercel.json: SPA Rewrites /* to /index.html"]
     end
 
     subgraph BackendHosting ["Render Cloud Platform (Backend)"]
-        VercelCDN -->|HTTPS API Requests / SSE Streams| RenderLoadBalancer[Render Load Balancer / Proxy]
-        RenderLoadBalancer --> UvicornProcess[Uvicorn Workers: server.py on 0.0.0.0:PORT]
-        UvicornProcess --> FastAPIInstance[FastAPI Application Instance]
+        VercelCDN -->|HTTPS API Requests / SSE Streams| RenderLoadBalancer["Render Load Balancer / Proxy"]
+        RenderLoadBalancer --> UvicornProcess["Uvicorn Workers: server.py on 0.0.0.0:PORT"]
+        UvicornProcess --> FastAPIInstance["FastAPI Application Instance"]
     end
 
     subgraph DatabaseHosting ["MongoDB Atlas Cloud (Database)"]
-        FastAPIInstance -->|Encrypted TLS Motor Driver| AtlasCluster[(MongoDB Atlas Cluster: Replica Set)]
-        AtlasCluster --> VectorIndexes[Atlas Vector Search Engine: cosine 384 dims]
+        FastAPIInstance -->|Encrypted TLS Motor Driver| AtlasCluster[("MongoDB Atlas Cluster: Replica Set")]
+        AtlasCluster --> VectorIndexes["Atlas Vector Search Engine: cosine 384 dims"]
     end
 
     subgraph ExternalClouds ["External Cloud Services"]
-        UserBrowser <--> ClerkPlatform[Clerk Auth Platform]
+        UserBrowser <--> ClerkPlatform["Clerk Auth Platform"]
         FastAPIInstance --> ClerkPlatform
-        FastAPIInstance --> MistralCloud[Mistral AI API]
-        FastAPIInstance --> GroqPlatform[Groq Inference Engine]
-        FastAPIInstance --> GoogleCloud[Google Gemini AI]
-        FastAPIInstance <--> GitHubPlatform[GitHub API]
+        FastAPIInstance --> MistralCloud["Mistral AI API"]
+        FastAPIInstance --> GroqPlatform["Groq Inference Engine"]
+        FastAPIInstance --> GoogleCloud["Google Gemini AI"]
+        FastAPIInstance <--> GitHubPlatform["GitHub API"]
     end
 ```

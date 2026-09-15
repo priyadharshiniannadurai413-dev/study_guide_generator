@@ -132,6 +132,48 @@ export const endpoints = {
     });
   },
 
+  // Complete Study Pack Studio
+  async generateStudyPack({ docId, pastedText, difficulty = 'intermediate' }) {
+    return await apiRequest('/api/study/generate-pack', {
+      method: 'POST',
+      body: JSON.stringify({
+        doc_id: docId || null,
+        pasted_text: pastedText || null,
+        difficulty,
+      }),
+    });
+  },
+
+  async uploadAndGenerateStudyPack(file, difficulty = 'intermediate') {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('difficulty', difficulty);
+
+    return await apiRequest('/api/study/upload-pack', {
+      method: 'POST',
+      body: formData,
+      isFormData: true,
+    });
+  },
+
+  async exportPackPDF(packData) {
+    return await apiRequest('/api/study/export-pack/pdf', {
+      method: 'POST',
+      body: JSON.stringify({
+        pack: packData,
+      }),
+    });
+  },
+
+  async exportPackCSV(packData) {
+    return await apiRequest('/api/study/export-pack/csv', {
+      method: 'POST',
+      body: JSON.stringify({
+        pack: packData,
+      }),
+    });
+  },
+
   // 2-Mark Conceptual Test & Semantic Evaluation
   async generateTwoMarkTest({ docId, pastedText, count = 5 }) {
     return await apiRequest('/api/study/generate-test', {

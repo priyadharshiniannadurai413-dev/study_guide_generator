@@ -9,10 +9,12 @@ FastAPI router for dedicated study generation endpoints:
 import io
 import json
 import logging
+import os
 import re
+import tempfile
 from typing import Any, Dict, Literal, Optional, Union
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -20,6 +22,7 @@ from app.ai.chat_service import get_chat_service
 from app.ai.schemas import AdaptiveStudyNotes, QuizDeck, StudyNotes, TopicDetailBlock
 from app.auth.dependencies import get_current_user
 from app.db.mongodb import get_user_doc_collection
+from app.rag.adhoc_loader import load_adhoc_pdf
 from app.rag.user_doc_retriever import (
     assemble_document_context,
     get_full_user_document,
@@ -701,6 +704,84 @@ async def generate_pack(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to generate study pack: {exc}",
         )
+
+
+@router.post("/upload-pack")
+async def upload_and_generate_pack(
+    file: UploadFile = File(..., description="Uploaded lecture PDF for Complete Study Pack generation"),
+    difficulty: Literal["beginner", "intermediate", "advanced"] = Form("intermediate"),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Directly ingest an uploaded lecture PDF, extract its textual content with header/footer cleanup,
+    and generate an all-inclusive Complete Study Pack calibrated to the selected difficulty.
+    Produces:
+    - Concise summary notes
+    - Exactly 20 practice MCQs with explanations and options
+    - Exactly 5 short-answer questions with model answers and evaluation rubrics
+    - Key terms glossary
+    - Suggested study order roadmap
+    """
+    filename = file.filename or "lecture_material.pdf"
+    if not filename.lower().endswith(".pdf"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only PDF documents (.pdf) are supported.",
+        )
+
+    file_bytes = await file.read()
+    if not file_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Uploaded file is empty.",
+        )
+
+    if not file_bytes.startswith(b"%PDF"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid file: Not a valid PDF document.",
+        )
+
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp_file:
+            tmp_file.write(file_bytes)
+            tmp_path = tmp_file.name
+
+        pages = load_adhoc_pdf(tmp_path)
+        if not pages:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Unable to extract readable pages from the provided PDF.",
+            )
+
+        extracted_text = "\n\n".join([p.get("text", "") for p in pages if p.get("text")])
+        if not extracted_text.strip():
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="No readable text content extracted from the provided PDF.",
+            )
+
+        logger.info(f"[StudyRoute] Generating Complete Study Pack from {filename} ({len(pages)} pages, difficulty={difficulty})...")
+        pack = await generate_complete_study_pack_async(
+            context=extracted_text,
+            difficulty=difficulty,
+        )
+        return pack.model_dump()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"[StudyRoute] Complete study pack upload generation failed: {exc}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate study pack: {exc}",
+        )
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
 
 
 @router.post("/export-pack/pdf")

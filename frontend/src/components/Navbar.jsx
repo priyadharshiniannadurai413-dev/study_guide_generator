@@ -78,6 +78,7 @@ export function Navbar({ activeTab, setActiveTab }) {
     { id: 'workbench', label: 'GitHub Lab', icon: FolderGit2 },
     { id: 'mcp', label: 'MCP Hub', icon: Cpu },
     { id: 'documents', label: 'Documents', icon: FileText },
+    { id: 'pack', label: 'Study Pack', icon: Sparkles },
     { id: 'notes', label: 'Study Notes', icon: BookOpen },
     { id: 'quiz', label: 'MCQ Arena', icon: HelpCircle },
     { id: 'test', label: 'Exam Prep', icon: FileCheck2 },

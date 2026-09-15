@@ -149,7 +149,8 @@ export async function apiRequest(endpoint, options = {}, isRetry = false) {
     contentType.includes('application/octet-stream') ||
     contentType.includes('application/pdf') ||
     contentType.includes('wordprocessingml') ||
-    contentType.includes('openxmlformats')
+    contentType.includes('openxmlformats') ||
+    contentType.includes('text/csv')
   ) {
     return await response.blob();
   }

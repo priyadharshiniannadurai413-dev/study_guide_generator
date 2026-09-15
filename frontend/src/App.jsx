@@ -5,6 +5,7 @@ import { Navbar } from './components/Navbar';
 import { DashboardPage } from './pages/DashboardPage';
 import { ChatPage } from './pages/ChatPage';
 import { DocumentsPage } from './pages/DocumentsPage';
+import { StudyPackPage } from './pages/StudyPackPage';
 import { StudyNotesPage } from './pages/StudyNotesPage';
 import { QuizPage } from './pages/QuizPage';
 import { TwoMarkTestArena } from './components/study/TwoMarkTestArena';
@@ -285,6 +286,9 @@ function AppContent() {
                   setActiveTab={setActiveTab}
                   onSelectDocForStudy={handleSelectDocForStudy}
                 />
+              )}
+              {activeTab === 'pack' && (
+                <StudyPackPage initialDocId={selectedDocForStudy} />
               )}
               {activeTab === 'notes' && (
                 <StudyNotesPage initialDocId={selectedDocForStudy} />

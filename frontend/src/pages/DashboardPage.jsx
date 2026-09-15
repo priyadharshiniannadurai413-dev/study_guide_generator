@@ -102,6 +102,16 @@ export function DashboardPage({ setActiveTab }) {
       action: () => setActiveTab('test'),
       actionText: 'Launch Exam Prep',
     },
+    {
+      title: 'Complete Study Pack Studio',
+      description:
+        'Synthesize an all-inclusive pack: concise notes, 20 practice MCQs with explanations, 5 short answers, glossary, and a progressive study roadmap.',
+      icon: Sparkles,
+      color: '#818cf8',
+      bgGlow: 'rgba(129, 140, 248, 0.15)',
+      action: () => setActiveTab('pack'),
+      actionText: 'Build Study Pack',
+    },
   ];
 
   return (
